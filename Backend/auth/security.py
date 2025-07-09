@@ -7,35 +7,44 @@ from fastapi.security import OAuth2PasswordBearer
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/users/login")
 
+
 class Security:
-    """
-    Clase para manejar la generación y verificación de tokens JWT.
-    """
-    secret = "hola"  # En un proyecto real, esto debería estar en una variable de entorno.
-    
+    secret = "hola"
+
     @classmethod
-    def generate_token(cls, authUser) -> str:
+    def generate_access_token(cls, authUser) -> str:
         """
-        Genera un nuevo token JWT incluyendo el rol del usuario en el payload.
+        Genera un nuevo TOKEN DE ACCESO de corta duración.
         """
-        # Se obtiene la hora actual cada vez que se genera un token
-        # para asegurar que la expiración sea siempre correcta.
         hoy = datetime.datetime.now(pytz.timezone("America/Buenos_Aires"))
-        
 
         payload = {
-            "exp": hoy + datetime.timedelta(minutes=480), # Tiempo de vida del token (8 horas)
-            "iat": hoy, # Tiempo en que fue creado el token
-            "sub": authUser.username, # 'Subject', el identificador principal del token
-            "user_id": authUser.id, 
-            "role": authUser.role
+            "exp": hoy + datetime.timedelta(minutes=5),  # <-- Duración corta (30 mins)
+            "iat": hoy,
+            "sub": authUser.username,
+            "user_id": authUser.id,
+            "role": authUser.role,
         }
-        try:
-            return jwt.encode(payload, cls.secret, algorithm="HS256")
-        except Exception:
-            return None
+        return jwt.encode(payload, cls.secret, algorithm="HS256")
+
+    @classmethod
+    def generate_refresh_token(cls, authUser) -> str:
+        """
+        Genera un nuevo TOKEN DE ACTUALIZACIÓN de larga duración.
+        """
+        hoy = datetime.datetime.now(pytz.timezone("America/Buenos_Aires"))
+
+        payload = {
+            "exp": hoy + datetime.timedelta(days=1),  # <-- Duración larga (1 día)
+            "iat": hoy,
+            "sub": authUser.username,
+            # Nota: El refresh token no necesita incluir el rol. Su única misión es identificar al usuario.
+        }
+        return jwt.encode(payload, cls.secret, algorithm="HS256")
+
 
 # --- Dependencias de Seguridad de FastAPI ---
+
 
 def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
     """
@@ -47,7 +56,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
         return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, 
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail="El token ha expirado",
             headers={"WWW-Authenticate": "Bearer"},
         )
@@ -58,6 +67,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+
 def is_admin(current_user: dict = Depends(get_current_user)):
     """
     Dependencia "guardiana" que verifica si el usuario actual tiene el rol 'administrador'.
@@ -67,6 +77,6 @@ def is_admin(current_user: dict = Depends(get_current_user)):
     if current_user.get("role") != "administrador":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos de administrador para realizar esta acción."
+            detail="No tienes permisos de administrador para realizar esta acción.",
         )
     return current_user

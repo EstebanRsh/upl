@@ -69,21 +69,20 @@ def login(user_credentials: InputLogin):
                 },
             )
 
-        # Si las credenciales son correctas, genera el token
-        token = Security.generate_token(user_in_db)
+        # Si las credenciales son correctas, genera los tokens
+        access_token = Security.generate_access_token(user_in_db)
+        refresh_token = Security.generate_refresh_token(user_in_db)
 
-        if not token:
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "success": False,
-                    "message": "Error al generar el token",
-                },
-            )
-
-        # Devuelve el token
-        return JSONResponse(status_code=200, content={"success": True, "token": token})
-
+        # Devolver ambos tokens en la respuesta
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "token_type": "bearer",
+            },
+        )
     except Exception as e:
         return JSONResponse(
             status_code=500,

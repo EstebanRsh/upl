@@ -93,6 +93,11 @@ class InputPayment(BaseModel):
     user_id: int
     amount: float
 
+class UpdatePlan(BaseModel):
+    name: str | None = None
+    speed_mbps: int | None = None
+    price: float | None = None
+
 # --- Creación de Tablas y Sesión ---
 Base.metadata.create_all(engine)
 Session = sessionmaker(engine)

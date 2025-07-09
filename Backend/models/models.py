@@ -140,6 +140,16 @@ class UpdatePlan(BaseModel):
     price: float | None = None
 
 
+# --- Modelo de Actualización (Pydantic) ---
+
+
+class UpdateUserDetail(BaseModel):
+    firstname: str | None = None
+    lastname: str | None = None
+    address: str | None = None
+    phone: str | None = None
+
+
 # --- Creación de Tablas y Sesión ---
 Base.metadata.create_all(engine)
 Session = sessionmaker(engine)

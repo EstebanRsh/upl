@@ -17,6 +17,7 @@ class User(Base):
     
     userdetail = relationship("UserDetail", uselist=False)
     payments = relationship("Payment", back_populates="user")
+    subscriptions = relationship("Subscription") 
 
     def __init__(self, username, password, email):
         self.username = username
@@ -46,6 +47,8 @@ class InternetPlan(Base):
     speed_mbps = Column(Integer) # Velocidad del plan
     price = Column(Float) # Precio del plan
 
+    subscriptions = relationship("Subscription") 
+
     def __init__(self, name, speed_mbps, price):
         self.name = name
         self.speed_mbps = speed_mbps
@@ -67,6 +70,23 @@ class Payment(Base):
         self.user_id = user_id
         self.amount = amount
 
+# tabla pivote relacionando usuarios con planes de internet 
+class Subscription(Base): 
+    __tablename__ = "subscriptions"
+    id = Column("id", Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    plan_id = Column(Integer, ForeignKey("internet_plans.id"))
+    subscription_date = Column(DateTime, default=datetime.datetime.now)
+    status = Column(String, default="active") # Puede ser 'active', 'cancelled', etc.
+
+    # Relaciones para acceder desde una suscripción a su usuario y plan
+    user = relationship("User")
+    plan = relationship("InternetPlan")
+
+    def __init__(self, user_id, plan_id):
+        self.user_id = user_id
+        self.plan_id = plan_id
+        
 # --- Modelos de Entrada (Pydantic) ---
 
 class InputUser(BaseModel):
@@ -92,6 +112,12 @@ class InputPayment(BaseModel):
     plan_id: int
     user_id: int
     amount: float
+
+class InputSubscription(BaseModel):
+    user_id: int
+    plan_id: int
+
+# --- Modelos de Actualización (Pydantic) ---
 
 class UpdatePlan(BaseModel):
     name: str | None = None

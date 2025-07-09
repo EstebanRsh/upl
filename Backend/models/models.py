@@ -7,6 +7,7 @@ import datetime
 
 # --- Modelos de la Base de Datos (SQLAlchemy) ---
 
+
 class User(Base):
     __tablename__ = "users"
     id = Column("id", Integer, primary_key=True)
@@ -14,15 +15,18 @@ class User(Base):
     password = Column("password", String)
     email = Column("email", String(80), nullable=False, unique=True)
     id_userdetail = Column(Integer, ForeignKey("userdetails.id"))
-    
+    role = Column("role", String, default="cliente")
+
     userdetail = relationship("UserDetail", uselist=False)
     payments = relationship("Payment", back_populates="user")
-    subscriptions = relationship("Subscription") 
+    subscriptions = relationship("Subscription")
 
-    def __init__(self, username, password, email):
+    def __init__(self, username, password, email, role="cliente"):
         self.username = username
         self.password = password
         self.email = email
+        self.role = role
+
 
 class UserDetail(Base):
     __tablename__ = "userdetails"
@@ -30,8 +34,8 @@ class UserDetail(Base):
     dni = Column("dni", Integer, unique=True)
     firstname = Column("firstname", String)
     lastname = Column("lastname", String)
-    address = Column("address", String) 
-    phone = Column("phone", String) 
+    address = Column("address", String)
+    phone = Column("phone", String)
 
     def __init__(self, dni, firstname, lastname, address, phone):
         self.dni = dni
@@ -40,19 +44,21 @@ class UserDetail(Base):
         self.address = address
         self.phone = phone
 
+
 class InternetPlan(Base):
     __tablename__ = "internet_plans"
     id = Column("id", Integer, primary_key=True)
     name = Column(String(100), nullable=False)
-    speed_mbps = Column(Integer) # Velocidad del plan
-    price = Column(Float) # Precio del plan
+    speed_mbps = Column(Integer)  # Velocidad del plan
+    price = Column(Float)  # Precio del plan
 
-    subscriptions = relationship("Subscription") 
+    subscriptions = relationship("Subscription")
 
     def __init__(self, name, speed_mbps, price):
         self.name = name
         self.speed_mbps = speed_mbps
         self.price = price
+
 
 class Payment(Base):
     __tablename__ = "payments"
@@ -61,7 +67,7 @@ class Payment(Base):
     user_id = Column(ForeignKey("users.id"))
     amount = Column(Float)
     payment_date = Column(DateTime, default=datetime.datetime.now())
-    
+
     user = relationship("User", uselist=False, back_populates="payments")
     plan = relationship("InternetPlan", uselist=False)
 
@@ -70,14 +76,15 @@ class Payment(Base):
         self.user_id = user_id
         self.amount = amount
 
-# tabla pivote relacionando usuarios con planes de internet 
-class Subscription(Base): 
+
+# tabla pivote relacionando usuarios con planes de internet
+class Subscription(Base):
     __tablename__ = "subscriptions"
     id = Column("id", Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     plan_id = Column(Integer, ForeignKey("internet_plans.id"))
     subscription_date = Column(DateTime, default=datetime.datetime.now)
-    status = Column(String, default="active") # Puede ser 'active', 'cancelled', etc.
+    status = Column(String, default="active")  # Puede ser 'active', 'cancelled', etc.
 
     # Relaciones para acceder desde una suscripción a su usuario y plan
     user = relationship("User")
@@ -86,8 +93,10 @@ class Subscription(Base):
     def __init__(self, user_id, plan_id):
         self.user_id = user_id
         self.plan_id = plan_id
-        
+
+
 # --- Modelos de Entrada (Pydantic) ---
+
 
 class InputUser(BaseModel):
     username: str
@@ -99,30 +108,37 @@ class InputUser(BaseModel):
     address: str
     phone: str
 
+
 class InputLogin(BaseModel):
     username: str
     password: str
+
 
 class InputPlan(BaseModel):
     name: str
     speed_mbps: int
     price: float
 
+
 class InputPayment(BaseModel):
     plan_id: int
     user_id: int
     amount: float
 
+
 class InputSubscription(BaseModel):
     user_id: int
     plan_id: int
 
+
 # --- Modelos de Actualización (Pydantic) ---
+
 
 class UpdatePlan(BaseModel):
     name: str | None = None
     speed_mbps: int | None = None
     price: float | None = None
+
 
 # --- Creación de Tablas y Sesión ---
 Base.metadata.create_all(engine)

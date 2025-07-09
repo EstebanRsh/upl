@@ -4,12 +4,26 @@ import pytz
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from passlib.context import CryptContext
+
+# Instancia de CryptContext para manejar el hasheo
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/users/login")
 
 
 class Security:
     secret = "hola"
+
+    @staticmethod
+    def verify_password(plain_password: str, hashed_password: str) -> bool:
+        """Verifica una contraseña en texto plano contra su hash."""
+        return pwd_context.verify(plain_password, hashed_password)
+
+    @staticmethod
+    def get_password_hash(password: str) -> str:
+        """Genera el hash de una contraseña."""
+        return pwd_context.hash(password)
 
     @classmethod
     def generate_access_token(cls, authUser) -> str:

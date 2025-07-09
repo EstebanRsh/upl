@@ -16,6 +16,7 @@ class User(Base):
     email = Column("email", String(80), nullable=False, unique=True)
     id_userdetail = Column(Integer, ForeignKey("userdetails.id"))
     role = Column("role", String, default="cliente")
+    refresh_token = Column("refresh_token", String, nullable=True)
 
     userdetail = relationship("UserDetail", uselist=False)
     payments = relationship("Payment", back_populates="user")

@@ -20,6 +20,8 @@ def add_user(user_data: InputUser):
             address=user_data.address,
             phone=user_data.phone,
         )
+        # Hasheamos la contraseña antes de crear el objeto User
+        hashed_password = Security.get_password_hash(user_data.password)
 
         # Creamos el usuario principal
         new_user = User(
@@ -59,8 +61,10 @@ def login(user_credentials: InputLogin):
             .first()
         )
 
-        # Verifica si el usuario no existe o si la contraseña es incorrecta
-        if not user_in_db or not user_in_db.password == user_credentials.password:
+        # Verificamos si el usuario existe y si la contraseña es correcta usando el hash
+        if not user_in_db or not Security.verify_password(
+            user_credentials.password, user_in_db.password
+        ):
             return JSONResponse(
                 status_code=401,
                 content={
@@ -73,16 +77,25 @@ def login(user_credentials: InputLogin):
         access_token = Security.generate_access_token(user_in_db)
         refresh_token = Security.generate_refresh_token(user_in_db)
 
-        # Devolver ambos tokens en la respuesta
-        return JSONResponse(
-            status_code=200,
-            content={
-                "success": True,
-                "access_token": access_token,
-                "refresh_token": refresh_token,
-                "token_type": "bearer",
-            },
+        # Guardar el nuevo refresh token en la base de datos
+        user_in_db.refresh_token = refresh_token
+        session.commit()
+
+        # Crear la respuesta y AÑADIR LA COOKIE
+        response_body = {
+            "success": True,
+            "access_token": access_token,
+            "token_type": "bearer",
+        }
+        response = JSONResponse(content=response_body)
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,  # El navegador no permite a JS leer esta cookie
+            samesite="strict",  # Protección contra ataques CSRF
+            secure=True,  # Solo enviar por HTTPS en producción
         )
+        return response
     except Exception as e:
         return JSONResponse(
             status_code=500,

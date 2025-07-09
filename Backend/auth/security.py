@@ -33,7 +33,7 @@ class Security:
         hoy = datetime.datetime.now(pytz.timezone("America/Buenos_Aires"))
 
         payload = {
-            "exp": hoy + datetime.timedelta(minutes=5),  # <-- Duración corta (30 mins)
+            "exp": hoy + datetime.timedelta(minutes=30),  # <-- Duración corta (30 mins)
             "iat": hoy,
             "sub": authUser.username,
             "user_id": authUser.id,

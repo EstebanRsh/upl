@@ -151,6 +151,10 @@ class UpdateUserDetail(BaseModel):
     phone: str | None = None
 
 
+class UpdateSubscriptionStatus(BaseModel):
+    status: str  # Recibirá el nuevo estado, ej: "cancelled", "suspended"
+
+
 # --- Creación de Tablas y Sesión ---
 Base.metadata.create_all(engine)
 Session = sessionmaker(engine)

@@ -1,7 +1,13 @@
 # routes/admin_routes.py
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
-from models.models import session, User, UpdateUserDetail
+from models.models import (
+    session,
+    User,
+    UpdateUserDetail,
+    Subscription,
+    UpdateSubscriptionStatus,
+)
 from auth.security import is_admin
 
 admin_router = APIRouter()
@@ -39,6 +45,43 @@ def update_user_details(
 
         return {
             "message": f"Detalles del usuario con ID {user_id} actualizados exitosamente."
+        }
+
+    except Exception as e:
+        session.rollback()
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    finally:
+        session.close()
+
+
+@admin_router.put("/admin/subscriptions/{subscription_id}/status")
+def update_subscription_status(
+    subscription_id: int,
+    sub_data: UpdateSubscriptionStatus,
+    admin_user: dict = Depends(is_admin),  # Protegido por rol de admin
+):
+    """
+    Endpoint para que un administrador actualice el estado de una suscripción.
+    """
+    try:
+        # 1. Buscar la suscripción por su ID
+        subscription_to_update = (
+            session.query(Subscription)
+            .filter(Subscription.id == subscription_id)
+            .first()
+        )
+
+        if not subscription_to_update:
+            return JSONResponse(
+                status_code=404, content={"message": "Suscripción no encontrada"}
+            )
+
+        # 2. Actualizar el estado y guardar los cambios
+        subscription_to_update.status = sub_data.status
+        session.commit()
+
+        return {
+            "message": f"Estado de la suscripción {subscription_id} actualizado a '{sub_data.status}'."
         }
 
     except Exception as e:

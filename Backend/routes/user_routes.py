@@ -26,7 +26,7 @@ def add_user(user_data: InputUser):
         # Creamos el usuario principal
         new_user = User(
             username=user_data.username,
-            password=user_data.password,
+            password=hashed_password,
             email=user_data.email,
             role="cliente",
         )

@@ -7,10 +7,12 @@ from models.models import (
     Payment,
     InputPayment,
     User,
+    Invoice,
     PaginatedResponse,
     PaymentOut,
 )
 from auth.security import get_current_user, is_admin
+from utils.pdf_generator import create_invoice_pdf
 
 payment_router = APIRouter()
 
@@ -18,25 +20,62 @@ payment_router = APIRouter()
 @payment_router.post("/payments/add")
 def add_payment(payment_data: InputPayment, admin_user: dict = Depends(is_admin)):
     try:
-        user_exists = (
-            session.query(User).filter(User.id == payment_data.user_id).first()
+        # 1. Buscamos la factura pendiente más antigua para este usuario
+        invoice_to_pay = (
+            session.query(Invoice)
+            .filter(
+                Invoice.user_id == payment_data.user_id, Invoice.status == "pending"
+            )
+            .order_by(Invoice.issue_date.asc())
+            .first()
         )
-        if not user_exists:
+
+        if not invoice_to_pay:
             return JSONResponse(
                 status_code=404,
-                content={"message": "El usuario especificado no existe"},
+                content={
+                    "message": "No se encontró una factura pendiente para este usuario."
+                },
             )
 
+        # 2. Creamos el nuevo registro de pago
         new_payment = Payment(
-            plan_id=payment_data.plan_id,
             user_id=payment_data.user_id,
             amount=payment_data.amount,
+            invoice_id=invoice_to_pay.id,
         )
         session.add(new_payment)
+        session.flush()
+
+        # 3. Actualizamos la factura
+        invoice_to_pay.status = "paid"
+        invoice_to_pay.payment_id = new_payment.id
+
+        # 4. Generamos el recibo en PDF
+        user_details = invoice_to_pay.user.userdetail
+        plan_details = invoice_to_pay.subscription.plan
+
+        pdf_data = {
+            "invoice_id": invoice_to_pay.id,
+            "client_name": f"{user_details.firstname} {user_details.lastname}",
+            "payment_date": new_payment.payment_date.strftime("%d/%m/%Y"),
+            "plan_name": plan_details.name,
+            "amount_paid": new_payment.amount,
+        }
+        pdf_path = create_invoice_pdf(pdf_data)
+
+        # 5. Guardamos la ruta del PDF en la factura
+        invoice_to_pay.receipt_pdf_url = pdf_path
+
         session.commit()
         return JSONResponse(
-            status_code=201, content={"message": "Pago registrado exitosamente"}
+            status_code=201,
+            content={
+                "message": "Pago registrado y recibo generado.",
+                "pdf_path": pdf_path,
+            },
         )
+
     except Exception as e:
         session.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})

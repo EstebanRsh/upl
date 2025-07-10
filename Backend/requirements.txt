@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+psycopg2-binary
+pydantic[email]
+PyJWT
+pytz
+passlib[bcrypt]
+reportlab
+python-dateutil
+python-dotenv

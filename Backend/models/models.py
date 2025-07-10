@@ -23,7 +23,11 @@ class User(Base):
     refresh_token = Column("refresh_token", String, nullable=True)
 
     userdetail = relationship(
-        "UserDetail", uselist=False, back_populates="user", cascade="all, delete-orphan"
+        "UserDetail",
+        uselist=False,
+        back_populates="user",
+        cascade="all, delete-orphan",
+        single_parent=True,
     )
     payments = relationship(
         "Payment", back_populates="user", cascade="all, delete-orphan"

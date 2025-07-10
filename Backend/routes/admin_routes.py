@@ -2,10 +2,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import JSONResponse
 import math
+from typing import Optional
 from models.models import (
     session,
     User,
     InputUser,
+    UserDetail,
     Payment,
     UpdateUserDetail,
     Subscription,
@@ -27,37 +29,42 @@ admin_router = APIRouter()
 def get_all_users(
     page: int = Query(1, ge=1, description="Número de página"),
     size: int = Query(10, ge=1, le=100, description="Tamaño de la página"),
+    username: Optional[str] = Query(None, description="Filtrar por nombre de usuario"),
+    email: Optional[str] = Query(None, description="Filtrar por email"),
+    dni: Optional[int] = Query(None, description="Filtrar por DNI"),
     admin_user: dict = Depends(is_admin),
 ):
     """
     Obtiene una lista paginada de todos los usuarios del sistema.
     """
     try:
-        # 1. Calcular el offset para la consulta
-        offset = (page - 1) * size
+        # 1. Empezamos con la consulta base
+        query = session.query(User).options(joinedload(User.userdetail))
 
-        # 2. Obtener el total de usuarios para calcular las páginas
-        total_items = session.query(User).count()
+        # 2. Aplicamos los filtros si se proporcionaron
+        if username:
+            # Usamos ilike para búsqueda case-insensitive (ignora mayúsculas/minúsculas)
+            query = query.filter(User.username.ilike(f"%{username}%"))
+        if email:
+            query = query.filter(User.email.ilike(f"%{email}%"))
+        if dni:
+            # Para el DNI, necesitamos hacer un join con UserDetail
+            query = query.join(UserDetail).filter(UserDetail.dni == dni)
+
+        # 3. Contamos el total de items DESPUÉS de aplicar los filtros
+        total_items = query.count()
         if total_items == 0:
             return PaginatedResponse(
                 total_items=0, total_pages=0, current_page=1, items=[]
             )
 
-        # 3. Realizar la consulta paginada
-        users_query = (
-            session.query(User)
-            .options(joinedload(User.userdetail))
-            .offset(offset)
-            .limit(size)
-            .all()
-        )
+        # 4. Aplicamos la paginación a la consulta ya filtrada
+        offset = (page - 1) * size
+        users_query = query.offset(offset).limit(size).all()
 
-        # 4. Calcular el total de páginas
         total_pages = math.ceil(total_items / size)
 
-        # 5. Formatear la respuesta
-        # Aquí transformamos los objetos User/UserDetail a un formato limpio
-        # similar al modelo InputUser para no exponer la contraseña.
+        # El resto del formateo de la respuesta es igual
         items_list = []
         for user in users_query:
             if user.userdetail:

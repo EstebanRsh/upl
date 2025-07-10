@@ -4,6 +4,10 @@ from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float
 from sqlalchemy.orm import sessionmaker, relationship
 from pydantic import BaseModel, EmailStr
 import datetime
+from typing import List, TypeVar, Generic
+
+
+T = TypeVar("T")
 
 # --- Modelos de la Base de Datos (SQLAlchemy) ---
 
@@ -97,8 +101,6 @@ class Subscription(Base):
 
 
 # --- Modelos de Entrada (Pydantic) ---
-
-
 class InputUser(BaseModel):
     username: str
     password: str
@@ -133,8 +135,6 @@ class InputSubscription(BaseModel):
 
 
 # --- Modelos de Actualización (Pydantic) ---
-
-
 class UpdatePlan(BaseModel):
     name: str | None = None
     speed_mbps: int | None = None
@@ -142,8 +142,6 @@ class UpdatePlan(BaseModel):
 
 
 # --- Modelo de Actualización (Pydantic) ---
-
-
 class UpdateUserDetail(BaseModel):
     firstname: str | None = None
     lastname: str | None = None
@@ -153,6 +151,59 @@ class UpdateUserDetail(BaseModel):
 
 class UpdateSubscriptionStatus(BaseModel):
     status: str  # Recibirá el nuevo estado, ej: "cancelled", "suspended"
+
+
+# --- Modelo de Respuesta Paginada (Pydantic) ---
+class PaginatedResponse(BaseModel, Generic[T]):
+    total_items: int
+    total_pages: int
+    current_page: int
+    items: List[T]
+
+
+# --- Modelo de Respuesta paginacion (Pydantic) ---
+class UserOut(BaseModel):
+    """
+    Modelo de respuesta para el usuario, sin exponer datos sensibles.
+    """
+
+    username: str
+    email: EmailStr
+    dni: int
+    firstname: str
+    lastname: str
+    address: str
+    phone: str
+    role: str
+
+
+class PlanOut(BaseModel):
+    """Modelo de respuesta para los planes de internet."""
+
+    id: int
+    name: str
+    speed_mbps: int
+    price: float
+
+
+class PaymentOut(BaseModel):
+    """Modelo de respuesta para los pagos."""
+
+    id: int
+    plan_id: int
+    user_id: int
+    amount: float
+    payment_date: datetime.datetime
+
+
+class SubscriptionOut(BaseModel):
+    """Modelo de respuesta para las suscripciones, incluyendo detalles."""
+
+    id: int
+    status: str
+    subscription_date: datetime.datetime
+    user: UserOut  # Anidamos el modelo del usuario
+    plan: PlanOut  # Anidamos el modelo del plan
 
 
 # --- Creación de Tablas y Sesión ---

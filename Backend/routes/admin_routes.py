@@ -1,13 +1,22 @@
 # routes/admin_routes.py
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
+import math
 from models.models import (
     session,
     User,
+    InputUser,
+    Payment,
     UpdateUserDetail,
     Subscription,
     UpdateSubscriptionStatus,
+    PaginatedResponse,
+    UserOut,
+    SubscriptionOut,
+    PaymentOut,
+    PlanOut,
 )
+from sqlalchemy.orm import joinedload
 from auth.security import is_admin
 
 admin_router = APIRouter()
@@ -87,5 +96,153 @@ def update_subscription_status(
     except Exception as e:
         session.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})
+    finally:
+        session.close()
+
+
+@admin_router.get("/admin/users/all", response_model=PaginatedResponse[UserOut])
+def get_all_users(
+    page: int = Query(1, ge=1, description="Número de página"),
+    size: int = Query(10, ge=1, le=100, description="Tamaño de la página"),
+    admin_user: dict = Depends(is_admin),
+):
+    """
+    Obtiene una lista paginada de todos los usuarios del sistema.
+    """
+    try:
+        # 1. Calcular el offset para la consulta
+        offset = (page - 1) * size
+
+        # 2. Obtener el total de usuarios para calcular las páginas
+        total_items = session.query(User).count()
+        if total_items == 0:
+            return PaginatedResponse(
+                total_items=0, total_pages=0, current_page=1, items=[]
+            )
+
+        # 3. Realizar la consulta paginada
+        users_query = (
+            session.query(User)
+            .options(joinedload(User.userdetail))
+            .offset(offset)
+            .limit(size)
+            .all()
+        )
+
+        # 4. Calcular el total de páginas
+        total_pages = math.ceil(total_items / size)
+
+        # 5. Formatear la respuesta
+        # Aquí transformamos los objetos User/UserDetail a un formato limpio
+        # similar al modelo InputUser para no exponer la contraseña.
+        items_list = []
+        for user in users_query:
+            if user.userdetail:
+                items_list.append(
+                    UserOut(
+                        username=user.username,
+                        email=user.email,
+                        dni=user.userdetail.dni,
+                        firstname=user.userdetail.firstname,
+                        lastname=user.userdetail.lastname,
+                        address=user.userdetail.address,
+                        phone=user.userdetail.phone,
+                        role=user.role,
+                    )
+                )
+
+        return PaginatedResponse(
+            total_items=total_items,
+            total_pages=total_pages,
+            current_page=page,
+            items=items_list,
+        )
+    finally:
+        session.close()
+
+
+@admin_router.get(
+    "/admin/subscriptions/all", response_model=PaginatedResponse[SubscriptionOut]
+)
+def get_all_subscriptions(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    admin_user: dict = Depends(is_admin),
+):
+    """Obtiene una lista paginada de TODAS las suscripciones en el sistema."""
+    try:
+        offset = (page - 1) * size
+        total_items = session.query(Subscription).count()
+
+        # Usamos joinedload para cargar los datos del usuario y del plan en una sola consulta
+        subscriptions_query = (
+            session.query(Subscription)
+            .options(
+                joinedload(Subscription.user).joinedload(User.userdetail),
+                joinedload(Subscription.plan),
+            )
+            .offset(offset)
+            .limit(size)
+            .all()
+        )
+
+        total_pages = math.ceil(total_items / size)
+
+        # Formateamos la respuesta para que coincida con el modelo SubscriptionOut
+        items_list = [
+            SubscriptionOut(
+                id=sub.id,
+                status=sub.status,
+                subscription_date=sub.subscription_date,
+                user=UserOut(
+                    username=sub.user.username,
+                    email=sub.user.email,
+                    dni=sub.user.userdetail.dni,
+                    firstname=sub.user.userdetail.firstname,
+                    lastname=sub.user.userdetail.lastname,
+                    address=sub.user.userdetail.address,
+                    phone=sub.user.userdetail.phone,
+                    role=sub.user.role,
+                ),
+                plan=PlanOut(
+                    id=sub.plan.id,
+                    name=sub.plan.name,
+                    speed_mbps=sub.plan.speed_mbps,
+                    price=sub.plan.price,
+                ),
+            )
+            for sub in subscriptions_query
+        ]
+
+        return PaginatedResponse(
+            total_items=total_items,
+            total_pages=total_pages,
+            current_page=page,
+            items=items_list,
+        )
+    finally:
+        session.close()
+
+
+@admin_router.get("/admin/payments/all", response_model=PaginatedResponse[PaymentOut])
+def get_all_payments(
+    page: int = Query(1, ge=1),
+    size: int = Query(20, ge=1, le=100),
+    admin_user: dict = Depends(is_admin),
+):
+    """Obtiene una lista paginada de TODOS los pagos en el sistema."""
+    try:
+        offset = (page - 1) * size
+        total_items = session.query(Payment).count()
+
+        payments_query = session.query(Payment).offset(offset).limit(size).all()
+        total_pages = math.ceil(total_items / size)
+
+        return PaginatedResponse(
+            total_items=total_items,
+            total_pages=total_pages,
+            current_page=page,
+            items=payments_query,
+        )
     finally:
         session.close()

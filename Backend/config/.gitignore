@@ -1,0 +1,34 @@
+# Entornos Virtuales
+# Reemplaza 'api_upl' con el nombre de tu entorno si es diferente
+/api_upl/
+/env/
+/venv/
+/.venv/
+
+# Archivos de caché de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Archivos de configuración del editor/IDE
+.vscode/
+.idea/
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Archivos generados por la aplicación
+/facturas/
+*.log
+*.pdf
+
+# Archivos de dependencias y builds
+*.egg-info/
+dist/
+build/
+
+# Archivo de variables de entorno (¡MUY IMPORTANTE!)
+# Este archivo contiene secretos y NUNCA debe subirse a Git.
+.env

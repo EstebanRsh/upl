@@ -7,6 +7,7 @@ from routes.payment_routes import payment_router
 from routes.subscription_routes import subscription_router
 from routes.admin_routes import admin_router
 from routes.token_routes import token_router
+from routes.billing_routes import billing_router
 
 app = FastAPI(
     title="API para ISP",
@@ -30,6 +31,7 @@ app.include_router(payment_router, prefix="/api", tags=["Pagos"])
 app.include_router(subscription_router, prefix="/api", tags=["Suscripciones"])
 app.include_router(admin_router, prefix="/api", tags=["Administración"])
 app.include_router(token_router, prefix="/api", tags=["Token"])
+app.include_router(billing_router, prefix="/api", tags=["Facturación"])
 
 
 @app.get("/")

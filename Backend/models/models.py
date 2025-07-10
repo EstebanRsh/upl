@@ -22,9 +22,13 @@ class User(Base):
     role = Column("role", String, default="cliente")
     refresh_token = Column("refresh_token", String, nullable=True)
 
-    userdetail = relationship("UserDetail", uselist=False)
-    payments = relationship("Payment", back_populates="user")
-    subscriptions = relationship("Subscription")
+    userdetail = relationship(
+        "UserDetail", uselist=False, back_populates="user", cascade="all, delete-orphan"
+    )
+    payments = relationship(
+        "Payment", back_populates="user", cascade="all, delete-orphan"
+    )
+    subscriptions = relationship("Subscription", cascade="all, delete-orphan")
 
     def __init__(self, username, password, email, role="cliente"):
         self.username = username
@@ -41,6 +45,8 @@ class UserDetail(Base):
     lastname = Column("lastname", String)
     address = Column("address", String)
     phone = Column("phone", String)
+
+    user = relationship("User", back_populates="userdetail")
 
     def __init__(self, dni, firstname, lastname, address, phone):
         self.dni = dni

@@ -29,57 +29,73 @@ admin_router = APIRouter()
 def get_all_users(
     page: int = Query(1, ge=1, description="Número de página"),
     size: int = Query(10, ge=1, le=100, description="Tamaño de la página"),
-    username: Optional[str] = Query(None, description="Filtrar por nombre de usuario"),
-    email: Optional[str] = Query(None, description="Filtrar por email"),
-    dni: Optional[int] = Query(None, description="Filtrar por DNI"),
+    username: Optional[str] = Query(
+        None, description="Filtrar por nombre de usuario (empieza con...)"
+    ),
+    email: Optional[str] = Query(
+        None, description="Filtrar por email (empieza con...)"
+    ),
+    dni: Optional[int] = Query(None, description="Filtrar por DNI exacto"),
+    firstname: Optional[str] = Query(
+        None, description="Filtrar por nombre (contiene...)"
+    ),
+    lastname: Optional[str] = Query(
+        None, description="Filtrar por apellido (contiene...)"
+    ),
     admin_user: dict = Depends(is_admin),
 ):
     """
-    Obtiene una lista paginada de todos los usuarios del sistema.
+    Obtiene una lista paginada y filtrada de todos los usuarios del sistema.
     """
     try:
-        # 1. Empezamos con la consulta base
-        query = session.query(User).options(joinedload(User.userdetail))
+        # 1. Empezamos con la consulta base, incluyendo el JOIN
+        query = session.query(User).join(User.userdetail)
 
-        # 2. Aplicamos los filtros si se proporcionaron
+        # 2. Creamos una lista para almacenar los filtros dinámicamente
+        filters = []
         if username:
-            # Usamos ilike para búsqueda case-insensitive (ignora mayúsculas/minúsculas)
-            query = query.filter(User.username.ilike(f"%{username}%"))
+            filters.append(User.username.ilike(f"{username}%"))
         if email:
-            query = query.filter(User.email.ilike(f"%{email}%"))
+            filters.append(User.email.ilike(f"{email}%"))
         if dni:
-            # Para el DNI, necesitamos hacer un join con UserDetail
-            query = query.join(UserDetail).filter(UserDetail.dni == dni)
+            filters.append(UserDetail.dni == dni)
+        if firstname:
+            filters.append(UserDetail.firstname.ilike(f"{firstname}%"))
+        if lastname:
+            filters.append(UserDetail.lastname.ilike(f"{lastname}%"))
 
-        # 3. Contamos el total de items DESPUÉS de aplicar los filtros
+        # 3. Aplicamos TODOS los filtros a la vez
+        if filters:
+            query = query.filter(*filters)  # El asterisco desempaqueta la lista
+
+        # El resto de la función no necesita cambios...
         total_items = query.count()
         if total_items == 0:
             return PaginatedResponse(
                 total_items=0, total_pages=0, current_page=1, items=[]
             )
 
-        # 4. Aplicamos la paginación a la consulta ya filtrada
         offset = (page - 1) * size
-        users_query = query.offset(offset).limit(size).all()
+        users_query = (
+            query.options(joinedload(User.userdetail)).offset(offset).limit(size).all()
+        )
 
         total_pages = math.ceil(total_items / size)
 
-        # El resto del formateo de la respuesta es igual
-        items_list = []
-        for user in users_query:
-            if user.userdetail:
-                items_list.append(
-                    UserOut(
-                        username=user.username,
-                        email=user.email,
-                        dni=user.userdetail.dni,
-                        firstname=user.userdetail.firstname,
-                        lastname=user.userdetail.lastname,
-                        address=user.userdetail.address,
-                        phone=user.userdetail.phone,
-                        role=user.role,
-                    )
-                )
+        items_list = [
+            UserOut(
+                username=user.username,
+                email=user.email,
+                dni=user.userdetail.dni,
+                firstname=user.userdetail.firstname,
+                lastname=user.userdetail.lastname,
+                address=user.userdetail.address,
+                phone=user.userdetail.phone,
+                role=user.role,
+            )
+            for user in users_query
+            if user.userdetail
+        ]
 
         return PaginatedResponse(
             total_items=total_items,

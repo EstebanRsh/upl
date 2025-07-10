@@ -153,6 +153,10 @@ class UpdateSubscriptionStatus(BaseModel):
     status: str  # Recibirá el nuevo estado, ej: "cancelled", "suspended"
 
 
+class UpdateUserRole(BaseModel):
+    role: str
+
+
 # --- Modelo de Respuesta Paginada (Pydantic) ---
 class PaginatedResponse(BaseModel, Generic[T]):
     total_items: int

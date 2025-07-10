@@ -1,5 +1,5 @@
 # routes/admin_routes.py
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import JSONResponse
 import math
 from models.models import (
@@ -15,6 +15,7 @@ from models.models import (
     SubscriptionOut,
     PaymentOut,
     PlanOut,
+    UpdateUserRole,
 )
 from sqlalchemy.orm import joinedload
 from auth.security import is_admin
@@ -244,5 +245,42 @@ def get_all_payments(
             current_page=page,
             items=payments_query,
         )
+    finally:
+        session.close()
+
+
+@admin_router.put("/admin/users/{user_id}/role")
+def update_user_role(
+    user_id: int, role_data: UpdateUserRole, admin_user: dict = Depends(is_admin)
+):
+    """
+    Endpoint para que un administrador cambie el rol de otro usuario.
+    """
+    # Validación para que un administrador no pueda quitarse su propio rol por accidente
+    token_user_id = admin_user.get("user_id")
+    if token_user_id == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Un administrador no puede cambiar su propio rol.",
+        )
+
+    try:
+        user_to_update = session.query(User).filter(User.id == user_id).first()
+        if not user_to_update:
+            return JSONResponse(
+                status_code=404, content={"message": "Usuario no encontrado"}
+            )
+
+        # Actualizamos el rol y guardamos
+        user_to_update.role = role_data.role
+        session.commit()
+
+        return {
+            "message": f"Rol del usuario {user_id} actualizado a '{role_data.role}'."
+        }
+
+    except Exception as e:
+        session.rollback()
+        return JSONResponse(status_code=500, content={"error": str(e)})
     finally:
         session.close()

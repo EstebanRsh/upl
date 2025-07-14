@@ -1,11 +1,16 @@
-fastapi
-uvicorn[standard]
-sqlalchemy
-psycopg2-binary
-pydantic[email]
-PyJWT
-pytz
-passlib[bcrypt]
-reportlab
-python-dateutil
-python-dotenv
+# requirements.txt
+# Este archivo lista todas las librerías de Python de las que depende el proyecto.
+# Se usa para instalar todas las dependencias de una vez con el comando:
+# pip install -r requirements.txt
+
+fastapi             # El framework web principal.
+uvicorn[standard]   # El servidor ASGI (Asynchronous Server Gateway Interface) para correr FastAPI.
+sqlalchemy          # El ORM (Object-Relational Mapper) para interactuar con la base de datos.
+psycopg2-binary     # El "driver" o adaptador para que SQLAlchemy se pueda comunicar con PostgreSQL.
+pydantic[email]     # Para validación de datos. El extra [email] añade validación de formato de email.
+PyJWT               # Para generar y decodificar JSON Web Tokens (JWT).
+pytz                # Para el manejo de zonas horarias.
+passlib[bcrypt]     # Para hashear y verificar contraseñas de forma segura con el algoritmo bcrypt.
+reportlab           # La librería utilizada para generar los archivos PDF.
+python-dateutil     # Utilidades para el manejo de fechas y horas.
+python-dotenv       # Para cargar variables de entorno desde un archivo .env, útil para la configuración.

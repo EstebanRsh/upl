@@ -1,34 +1,64 @@
-# Entornos Virtuales
-# Reemplaza 'api_upl' con el nombre de tu entorno si es diferente
-/api_upl/
-/env/
-/venv/
-/.venv/
-
-# Archivos de caché de Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
 
-# Archivos de configuración del editor/IDE
-.vscode/
-.idea/
+# C extensions
+*.so
 
-# Archivos del sistema operativo
-.DS_Store
-Thumbs.db
-
-# Archivos generados por la aplicación
-/facturas/
-*.log
-*.pdf
-
-# Archivos de dependencias y builds
-*.egg-info/
-dist/
+# Distribution / packaging
+.Python
 build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Archivo de variables de entorno (¡MUY IMPORTANTE!)
-# Este archivo contiene secretos y NUNCA debe subirse a Git.
+# PyInstaller
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Environments
 .env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.idea/
+.vscode/

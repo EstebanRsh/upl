@@ -1,4 +1,12 @@
 # routes/admin_routes.py
+# -----------------------------------------------------------------------------
+# RUTAS DE ADMINISTRACIÓN
+# -----------------------------------------------------------------------------
+# Este archivo define todos los endpoints que son exclusivos para usuarios
+# con el rol de 'administrador'. Todas las rutas aquí están protegidas por la
+# dependencia 'is_admin'.
+# -----------------------------------------------------------------------------
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import JSONResponse
 import math
@@ -6,7 +14,6 @@ from typing import Optional
 from models.models import (
     session,
     User,
-    InputUser,
     UserDetail,
     Payment,
     UpdateUserDetail,
@@ -22,13 +29,18 @@ from models.models import (
 from sqlalchemy.orm import joinedload
 from auth.security import is_admin
 
+# Creación de un router específico para las rutas de administración.
 admin_router = APIRouter()
 
 
 @admin_router.get("/admin/users/all", response_model=PaginatedResponse[UserOut])
 def get_all_users(
-    page: int = Query(1, ge=1, description="Número de página"),
-    size: int = Query(10, ge=1, le=100, description="Tamaño de la página"),
+    # 'Query' permite definir validaciones y metadatos para los parámetros de la URL.
+    page: int = Query(1, ge=1, description="Número de página"),  # ge = greater or equal
+    size: int = Query(
+        10, ge=1, le=100, description="Tamaño de la página"
+    ),  # le = less or equal
+    # Parámetros de filtrado opcionales.
     username: Optional[str] = Query(
         None, description="Filtrar por nombre de usuario (empieza con...)"
     ),
@@ -42,19 +54,21 @@ def get_all_users(
     lastname: Optional[str] = Query(
         None, description="Filtrar por apellido (contiene...)"
     ),
+    # La dependencia 'is_admin' se ejecuta antes que esta función. Si el usuario no es admin,
+    # la petición se detiene y se devuelve un error 403.
     admin_user: dict = Depends(is_admin),
 ):
-    """
-    Obtiene una lista paginada y filtrada de todos los usuarios del sistema.
-    """
+    """Obtiene una lista paginada y filtrada de todos los usuarios del sistema."""
     try:
-        # 1. Empezamos con la consulta base, incluyendo el JOIN
+        # Consulta base que une las tablas de usuarios y detalles para poder filtrar por ambas.
         query = session.query(User).join(User.userdetail)
 
-        # 2. Creamos una lista para almacenar los filtros dinámicamente
+        # Construcción dinámica de filtros basada en los parámetros de la query.
         filters = []
         if username:
-            filters.append(User.username.ilike(f"{username}%"))
+            filters.append(
+                User.username.ilike(f"{username}%")
+            )  # ilike es case-insensitive LIKE.
         if email:
             filters.append(User.email.ilike(f"{email}%"))
         if dni:
@@ -64,24 +78,27 @@ def get_all_users(
         if lastname:
             filters.append(UserDetail.lastname.ilike(f"{lastname}%"))
 
-        # 3. Aplicamos TODOS los filtros a la vez
+        # Si hay filtros, se aplican a la consulta.
         if filters:
-            query = query.filter(*filters)  # El asterisco desempaqueta la lista
+            query = query.filter(
+                *filters
+            )  # El operador '*' desempaqueta la lista de filtros.
 
-        # El resto de la función no necesita cambios...
+        # Se cuenta el total de resultados después de filtrar para la paginación.
         total_items = query.count()
         if total_items == 0:
             return PaginatedResponse(
                 total_items=0, total_pages=0, current_page=1, items=[]
             )
 
+        # Se calcula el 'offset' para la paginación y se ejecuta la consulta.
         offset = (page - 1) * size
         users_query = (
             query.options(joinedload(User.userdetail)).offset(offset).limit(size).all()
         )
-
         total_pages = math.ceil(total_items / size)
 
+        # Se transforma la lista de objetos SQLAlchemy a una lista de objetos Pydantic 'UserOut'.
         items_list = [
             UserOut(
                 username=user.username,
@@ -97,6 +114,7 @@ def get_all_users(
             if user.userdetail
         ]
 
+        # Se devuelve la respuesta paginada.
         return PaginatedResponse(
             total_items=total_items,
             total_pages=total_pages,
@@ -120,7 +138,8 @@ def get_all_subscriptions(
         offset = (page - 1) * size
         total_items = session.query(Subscription).count()
 
-        # Usamos joinedload para cargar los datos del usuario y del plan en una sola consulta
+        # Usamos 'joinedload' anidado para cargar eficientemente todos los datos relacionados
+        # (Suscripción -> Usuario -> Detalles de Usuario y Suscripción -> Plan) en una sola consulta.
         subscriptions_query = (
             session.query(Subscription)
             .options(
@@ -131,10 +150,10 @@ def get_all_subscriptions(
             .limit(size)
             .all()
         )
-
         total_pages = math.ceil(total_items / size)
 
-        # Formateamos la respuesta para que coincida con el modelo SubscriptionOut
+        # Se formatea la respuesta para que coincida con el modelo 'SubscriptionOut',
+        # que espera objetos anidados 'UserOut' y 'PlanOut'.
         items_list = [
             SubscriptionOut(
                 id=sub.id,
@@ -180,7 +199,6 @@ def get_all_payments(
     try:
         offset = (page - 1) * size
         total_items = session.query(Payment).count()
-
         payments_query = session.query(Payment).offset(offset).limit(size).all()
         total_pages = math.ceil(total_items / size)
 
@@ -198,20 +216,16 @@ def get_all_payments(
 def update_user_details(
     user_id: int, user_data: UpdateUserDetail, admin_user: dict = Depends(is_admin)
 ):
-    """
-    Endpoint para que un administrador actualice los detalles de un cliente.
-    """
+    """Endpoint para que un administrador actualice los detalles de un cliente."""
     try:
-        # 1. Buscar al usuario que se quiere modificar
         user_to_update = session.query(User).filter(User.id == user_id).first()
-
         if not user_to_update or not user_to_update.userdetail:
             return JSONResponse(
                 status_code=404,
                 content={"message": "Usuario o sus detalles no encontrados"},
             )
 
-        # 2. Actualizar solo los campos que se enviaron en la petición
+        # Actualización parcial: solo se modifican los campos que vienen en el request.
         if user_data.firstname is not None:
             user_to_update.userdetail.firstname = user_data.firstname
         if user_data.lastname is not None:
@@ -221,13 +235,10 @@ def update_user_details(
         if user_data.phone is not None:
             user_to_update.userdetail.phone = user_data.phone
 
-        # 3. Guardar los cambios en la base de datos
         session.commit()
-
         return {
             "message": f"Detalles del usuario con ID {user_id} actualizados exitosamente."
         }
-
     except Exception as e:
         session.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})
@@ -239,32 +250,25 @@ def update_user_details(
 def update_subscription_status(
     subscription_id: int,
     sub_data: UpdateSubscriptionStatus,
-    admin_user: dict = Depends(is_admin),  # Protegido por rol de admin
+    admin_user: dict = Depends(is_admin),
 ):
-    """
-    Endpoint para que un administrador actualice el estado de una suscripción.
-    """
+    """Endpoint para que un administrador actualice el estado de una suscripción."""
     try:
-        # 1. Buscar la suscripción por su ID
         subscription_to_update = (
             session.query(Subscription)
             .filter(Subscription.id == subscription_id)
             .first()
         )
-
         if not subscription_to_update:
             return JSONResponse(
                 status_code=404, content={"message": "Suscripción no encontrada"}
             )
 
-        # 2. Actualizar el estado y guardar los cambios
         subscription_to_update.status = sub_data.status
         session.commit()
-
         return {
             "message": f"Estado de la suscripción {subscription_id} actualizado a '{sub_data.status}'."
         }
-
     except Exception as e:
         session.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})
@@ -276,11 +280,9 @@ def update_subscription_status(
 def update_user_role(
     user_id: int, role_data: UpdateUserRole, admin_user: dict = Depends(is_admin)
 ):
-    """
-    Endpoint para que un administrador cambie el rol de otro usuario.
-    """
-    # Validación para que un administrador no pueda quitarse su propio rol por accidente
+    """Endpoint para que un administrador cambie el rol de otro usuario."""
     token_user_id = admin_user.get("user_id")
+    # Regla de negocio: un administrador no puede cambiar su propio rol.
     if token_user_id == user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -294,14 +296,11 @@ def update_user_role(
                 status_code=404, content={"message": "Usuario no encontrado"}
             )
 
-        # Actualizamos el rol y guardamos
         user_to_update.role = role_data.role
         session.commit()
-
         return {
             "message": f"Rol del usuario {user_id} actualizado a '{role_data.role}'."
         }
-
     except Exception as e:
         session.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})
@@ -311,11 +310,9 @@ def update_user_role(
 
 @admin_router.delete("/admin/users/{user_id}")
 def delete_user(user_id: int, admin_user: dict = Depends(is_admin)):
-    """
-    Endpoint para que un administrador elimine a un usuario y todos sus datos.
-    """
-    # Un administrador no puede eliminarse a sí mismo
+    """Endpoint para que un administrador elimine a un usuario y todos sus datos en cascada."""
     token_user_id = admin_user.get("user_id")
+    # Regla de negocio: un administrador no puede eliminarse a sí mismo.
     if token_user_id == user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -329,14 +326,13 @@ def delete_user(user_id: int, admin_user: dict = Depends(is_admin)):
                 status_code=404, content={"message": "Usuario no encontrado"}
             )
 
-        # Gracias a la configuración de cascada, solo necesitamos borrar el objeto User
+        # Gracias a la configuración 'cascade="all, delete-orphan"' en el modelo User,
+        # al borrar el usuario se borrarán también sus detalles, pagos, suscripciones y facturas.
         session.delete(user_to_delete)
         session.commit()
-
         return {
             "message": f"Usuario con ID {user_id} y todos sus datos han sido eliminados."
         }
-
     except Exception as e:
         session.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})

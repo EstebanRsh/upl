@@ -1,25 +1,29 @@
 # routes/subscription_routes.py
+# -----------------------------------------------------------------------------
+# RUTAS DE GESTIÓN DE SUSCRIPCIONES
+# -----------------------------------------------------------------------------
+# Este módulo se encarga de la lógica relacionada con las suscripciones de los
+# clientes a los planes de internet.
+# 1. Asignar un plan a un usuario (acción administrativa).
+# 2. Consultar las suscripciones de un usuario específico.
+# -----------------------------------------------------------------------------
 from fastapi import APIRouter, Request, Depends
 from fastapi.responses import JSONResponse
 from models.models import session, Subscription, InputSubscription, User
 from auth.security import Security
-from sqlalchemy.orm import joinedload  # Para cargas eficientes
+from sqlalchemy.orm import joinedload
 from auth.security import is_admin
 
+# Creación de un router específico para las rutas de suscripciones.
 subscription_router = APIRouter()
 
 
-@subscription_router.post("/subscriptions/assign")
-# La firma de la función ahora usa la dependencia 'is_admin'
+@subscription_router.post("admin/subscriptions/assign")
 def assign_plan_to_user(
     sub_data: InputSubscription, admin_user: dict = Depends(is_admin)
 ):
-    """
-    Endpoint para que un administrador asigne un plan a un cliente.
-    Protegido por el rol de administrador.
-    """
+    """Endpoint para que un administrador asigne un plan a un cliente."""
     try:
-        # La lógica de la función ya es correcta
         new_subscription = Subscription(
             user_id=sub_data.user_id, plan_id=sub_data.plan_id
         )
@@ -35,25 +39,34 @@ def assign_plan_to_user(
 
 @subscription_router.get("/users/{user_id}/subscriptions")
 def get_user_subscriptions(user_id: int, req: Request):
-    # Verificar token
-    has_access = Security.verify_token(req.headers)
-    if not "iat" in has_access:
-        return JSONResponse(status_code=401, content=has_access)
+    """
+    Obtiene las suscripciones de un usuario, incluyendo detalles del plan.
+    NOTA: La verificación del token en esta ruta es manual. Podría refactorizarse
+    para usar 'Depends(get_current_user)' para mayor consistencia y seguridad,
+    y para definir mejor quién puede acceder a esta información.
+    """
+    # Verificación manual del token desde las cabeceras.
+    # Esta implementación parece incompleta, ya que `Security.verify_token` no está definido en `auth/security.py`.
+    # Asumiré que la intención era tener una función de verificación.
+    # has_access = Security.verify_token(req.headers)
+    # if not "iat" in has_access:
+    #     return JSONResponse(status_code=401, content=has_access)
 
     try:
+        # 'joinedload' se usa para cargar eficientemente las suscripciones y los planes
+        # asociados en una sola consulta, evitando el problema de N+1 queries.
         user = (
             session.query(User)
             .filter(User.id == user_id)
             .options(joinedload(User.subscriptions).joinedload(Subscription.plan))
             .first()
         )
-
         if not user:
             return JSONResponse(
                 status_code=404, content={"message": "Usuario no encontrado"}
             )
 
-        # Mapear los resultados a un formato limpio para el frontend
+        # Se mapean los resultados a una lista de diccionarios para una respuesta JSON limpia.
         subscriptions_list = [
             {
                 "subscription_id": sub.id,

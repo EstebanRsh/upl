@@ -8,7 +8,8 @@
 # 3. Proveer dependencias de FastAPI ('Depends') para proteger las rutas,
 #    verificando que el usuario esté autenticado y tenga los permisos necesarios.
 # -----------------------------------------------------------------------------
-
+import os
+from dotenv import load_dotenv
 import datetime
 import pytz  # Para manejar zonas horarias de forma correcta.
 import jwt  # Para la creación y validación de JSON Web Tokens.
@@ -16,6 +17,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from passlib.context import CryptContext  # Para el hasheo de contraseñas.
 
+load_dotenv()
 # 1. Configuración del hasheo de contraseñas
 # Se crea un contexto de 'passlib' que usará el algoritmo 'bcrypt', el estándar actual
 # para el almacenamiento seguro de contraseñas.
@@ -34,7 +36,7 @@ class Security:
     # ¡IMPORTANTE! Esta clave secreta se usa para firmar los tokens JWT.
     # En producción, NUNCA debe estar escrita directamente en el código.
     # Debe cargarse desde una variable de entorno segura.
-    secret = "hola"
+    secret = os.getenv("JWT_SECRET_KEY")
 
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:

@@ -31,6 +31,12 @@ app = FastAPI(
 # Es una medida de seguridad del navegador que impide que una página web haga peticiones
 # a un dominio diferente al que la sirvió. Este middleware le dice al navegador que
 # permita peticiones desde cualquier origen ('*').
+origins = [
+    "http://localhost:3000",  # Si tu frontend corre en el puerto 3000
+    "http://localhost:8080",
+    "https://mi-empresa-isp.com",
+    "https://www.mi-empresa-isp.com",
+]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[

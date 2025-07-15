@@ -9,6 +9,7 @@
 # -----------------------------------------------------------------------------
 
 # Importaciones de FastAPI y de los routers locales.
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routes.user_routes import user_router
@@ -31,16 +32,19 @@ app = FastAPI(
 # Es una medida de seguridad del navegador que impide que una página web haga peticiones
 # a un dominio diferente al que la sirvió. Este middleware le dice al navegador que
 # permita peticiones desde cualquier origen ('*').
+origins = [
+    "http://localhost:3000",  # Si tu frontend corre en el puerto 3000
+    "http://localhost:8080",
+    "https://mi-empresa-isp.com",
+    "https://www.mi-empresa-isp.com",
+]
+# Configuración del Middleware de CORS (Cross-Origin Resource Sharing).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "*"
-    ],  # IMPORTANTE: En producción, se debe restringir a los dominios del frontend.
-    allow_credentials=True,  # Permite que las cookies se incluyan en las peticiones.
-    allow_methods=[
-        "*"
-    ],  # Permite todos los métodos HTTP (GET, POST, PUT, DELETE, etc.).
-    allow_headers=["*"],  # Permite todas las cabeceras HTTP.
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Inclusión de los routers en la aplicación principal.

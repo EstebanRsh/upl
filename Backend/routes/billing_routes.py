@@ -68,9 +68,10 @@ def generate_monthly_invoices(admin_user: dict = Depends(is_admin)):
     """
     Genera las facturas mensuales para todas las suscripciones activas.
     Este es un endpoint pensado para ser ejecutado una vez al mes (ej. con un cron job).
+    AÑADIDA LA LÓGICA PARA EVITAR DUPLICADOS.
     """
     try:
-        # 1. Obtiene la regla de negocio 'payment_window_days' para saber la fecha de vencimiento.
+        # 1. Obtiene la regla de negocio para la fecha de vencimiento.
         payment_window_setting = (
             session.query(BusinessSettings)
             .filter(BusinessSettings.setting_name == "payment_window_days")
@@ -89,9 +90,31 @@ def generate_monthly_invoices(admin_user: dict = Depends(is_admin)):
         )
 
         generated_count = 0
+        skipped_count = 0
+        today = datetime.date.today()
+
         for sub in active_subscriptions:
-            # 3. Por cada suscripción activa, crea una nueva factura.
-            issue_date = datetime.date.today()
+            # --- VERIFICACIÓN ANTI-DUPLICADOS ---
+            # Revisa si ya existe una factura para esta suscripción en el mes y año actual.
+            existing_invoice = (
+                session.query(Invoice)
+                .filter(
+                    Invoice.subscription_id == sub.id,
+                    # Extrae el año y mes de la fecha de emisión para comparar
+                    # Esto requiere que tu base de datos soporte funciones de fecha como EXTRACT
+                    # Para PostgreSQL, esto funciona bien.
+                    session.extract("year", Invoice.issue_date) == today.year,
+                    session.extract("month", Invoice.issue_date) == today.month,
+                )
+                .first()
+            )
+
+            if existing_invoice:
+                skipped_count += 1
+                continue  # Si ya existe, salta a la siguiente suscripción.
+
+            # 3. Si no hay factura existente, crea una nueva.
+            issue_date = today
             due_date = issue_date + datetime.timedelta(days=payment_window_days)
 
             new_invoice = Invoice(
@@ -99,14 +122,16 @@ def generate_monthly_invoices(admin_user: dict = Depends(is_admin)):
                 subscription_id=sub.id,
                 due_date=due_date,
                 base_amount=sub.plan.price,
-                total_amount=sub.plan.price,  # Inicialmente el total es el precio del plan.
+                total_amount=sub.plan.price,
             )
             session.add(new_invoice)
             generated_count += 1
 
         session.commit()
         return {
-            "message": f"Proceso completado. Se generaron {generated_count} facturas."
+            "message": "Proceso completado.",
+            "facturas_generadas": generated_count,
+            "facturas_omitidas_por_duplicado": skipped_count,
         }
     except Exception as e:
         session.rollback()
@@ -159,6 +184,71 @@ def download_invoice_pdf(
             filename=f"recibo_{invoice_id}.pdf",
         )
     except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    finally:
+        session.close()
+
+
+@billing_router.post("/admin/invoices/process-overdue")
+def process_overdue_invoices(admin_user: dict = Depends(is_admin)):
+    """
+    Busca facturas vencidas, aplica cargos por mora y suspende servicios si es necesario.
+    """
+    try:
+        # 1. Obtiene las reglas de negocio para cargos por mora y días para suspensión.
+        late_fee_setting = (
+            session.query(BusinessSettings)
+            .filter_by(setting_name="late_fee_amount")
+            .first()
+        )
+        suspension_days_setting = (
+            session.query(BusinessSettings)
+            .filter_by(setting_name="days_for_suspension")
+            .first()
+        )
+
+        if not late_fee_setting or not suspension_days_setting:
+            raise HTTPException(
+                status_code=400,
+                detail="Faltan reglas de negocio para 'late_fee_amount' o 'days_for_suspension'.",
+            )
+
+        late_fee_amount = float(late_fee_setting.setting_value)
+        days_for_suspension = int(suspension_days_setting.setting_value)
+        today = datetime.date.today()
+
+        # 2. Busca facturas pendientes y vencidas
+        overdue_invoices = (
+            session.query(Invoice)
+            .filter(Invoice.status == "pending", Invoice.due_date < today)
+            .all()
+        )
+
+        processed_count = 0
+        suspended_count = 0
+        for invoice in overdue_invoices:
+            # 3. Aplica cargo por mora si aún no se ha hecho
+            if invoice.late_fee == 0.0:
+                invoice.late_fee = late_fee_amount
+                invoice.total_amount += late_fee_amount
+                processed_count += 1
+
+            # 4. Verifica si se debe suspender el servicio
+            days_overdue = (today - invoice.due_date.date()).days
+            if days_overdue >= days_for_suspension:
+                subscription = session.query(Subscription).get(invoice.subscription_id)
+                if subscription and subscription.status == "active":
+                    subscription.status = "suspended"
+                    suspended_count += 1
+
+        session.commit()
+        return {
+            "message": "Proceso de facturas vencidas completado.",
+            "facturas_con_recargo": processed_count,
+            "servicios_suspendidos": suspended_count,
+        }
+    except Exception as e:
+        session.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})
     finally:
         session.close()

@@ -29,17 +29,17 @@ payment_router = APIRouter()
 @payment_router.post("/payments/add")
 def add_payment(payment_data: InputPayment, admin_user: dict = Depends(is_admin)):
     """
-    Registra un pago para un usuario. Este proceso actualiza la factura pendiente
-    más antigua, genera un recibo en PDF y guarda su referencia.
+    Registra un pago para un usuario.
+    AÑADIDA LA VALIDACIÓN DEL MONTO DEL PAGO.
     """
     try:
-        # 1. Busca la factura pendiente ('pending') más antigua del usuario.
+        # 1. Busca la factura pendiente más antigua del usuario.
         invoice_to_pay = (
             session.query(Invoice)
             .filter(
                 Invoice.user_id == payment_data.user_id, Invoice.status == "pending"
             )
-            .order_by(Invoice.issue_date.asc())  # .asc() para la más antigua.
+            .order_by(Invoice.issue_date.asc())
             .first()
         )
         if not invoice_to_pay:
@@ -47,6 +47,18 @@ def add_payment(payment_data: InputPayment, admin_user: dict = Depends(is_admin)
                 status_code=404,
                 content={
                     "message": "No se encontró una factura pendiente para este usuario."
+                },
+            )
+
+        # --- VALIDACIÓN DEL MONTO ---
+        # Comprueba si el monto del pago coincide con el total de la factura.
+        if payment_data.amount != invoice_to_pay.total_amount:
+            return JSONResponse(
+                status_code=400,  # Bad Request
+                content={
+                    "message": "El monto del pago no coincide con el total de la factura.",
+                    "monto_requerido": invoice_to_pay.total_amount,
+                    "monto_recibido": payment_data.amount,
                 },
             )
 

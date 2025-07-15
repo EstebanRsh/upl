@@ -20,6 +20,7 @@ from models.models import (
 from auth.security import is_admin, get_current_user
 import datetime
 import os
+from sqlalchemy import extract
 
 # Creación de un router específico para las rutas de facturación.
 billing_router = APIRouter()
@@ -67,7 +68,6 @@ def set_business_setting(setting_data: Setting, admin_user: dict = Depends(is_ad
 def generate_monthly_invoices(admin_user: dict = Depends(is_admin)):
     """
     Genera las facturas mensuales para todas las suscripciones activas.
-    Este es un endpoint pensado para ser ejecutado una vez al mes (ej. con un cron job).
     AÑADIDA LA LÓGICA PARA EVITAR DUPLICADOS.
     """
     try:
@@ -100,11 +100,8 @@ def generate_monthly_invoices(admin_user: dict = Depends(is_admin)):
                 session.query(Invoice)
                 .filter(
                     Invoice.subscription_id == sub.id,
-                    # Extrae el año y mes de la fecha de emisión para comparar
-                    # Esto requiere que tu base de datos soporte funciones de fecha como EXTRACT
-                    # Para PostgreSQL, esto funciona bien.
-                    session.extract("year", Invoice.issue_date) == today.year,
-                    session.extract("month", Invoice.issue_date) == today.month,
+                    extract("year", Invoice.issue_date) == today.year,
+                    extract("month", Invoice.issue_date) == today.month,
                 )
                 .first()
             )

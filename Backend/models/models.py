@@ -51,7 +51,9 @@ class User(Base):
     payments = relationship(
         "Payment", back_populates="user", cascade="all, delete-orphan"
     )
-    subscriptions = relationship("Subscription", cascade="all, delete-orphan")
+    subscriptions = relationship(
+        "Subscription", back_populates="user", cascade="all, delete-orphan"
+    )
     invoices = relationship(
         "Invoice", back_populates="user", cascade="all, delete-orphan"
     )
@@ -94,7 +96,7 @@ class InternetPlan(Base):
     name = Column(String(100), nullable=False)
     speed_mbps = Column(Integer)
     price = Column(Float)
-    subscriptions = relationship("Subscription")
+    subscriptions = relationship("Subscription", back_populates="plan")
 
     def __init__(self, name, speed_mbps, price):
         """Constructor para crear una instancia de InternetPlan."""
@@ -132,8 +134,8 @@ class Subscription(Base):
     plan_id = Column(Integer, ForeignKey("internet_plans.id"))
     subscription_date = Column(DateTime, default=datetime.datetime.now)
     status = Column(String, default="active")
-    user = relationship("User")
-    plan = relationship("InternetPlan")
+    user = relationship("User", back_populates="subscriptions")
+    plan = relationship("InternetPlan", back_populates="subscriptions")
 
     def __init__(self, user_id, plan_id):
         """Constructor para crear una instancia de Subscription."""

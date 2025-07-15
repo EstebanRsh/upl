@@ -7,12 +7,12 @@
 # 1. Asignar un plan a un usuario (acción administrativa).
 # 2. Consultar las suscripciones de un usuario específico.
 # -----------------------------------------------------------------------------
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Request, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from models.models import session, Subscription, InputSubscription, User
 from auth.security import Security
 from sqlalchemy.orm import joinedload
-from auth.security import is_admin
+from auth.security import is_admin, get_current_user
 
 # Creación de un router específico para las rutas de suscripciones.
 subscription_router = APIRouter()
@@ -38,20 +38,22 @@ def assign_plan_to_user(
 
 
 @subscription_router.get("/users/{user_id}/subscriptions")
-def get_user_subscriptions(user_id: int, req: Request):
+def get_user_subscriptions(
+    user_id: int, current_user: dict = Depends(get_current_user)
+):
     """
     Obtiene las suscripciones de un usuario, incluyendo detalles del plan.
     NOTA: La verificación del token en esta ruta es manual. Podría refactorizarse
     para usar 'Depends(get_current_user)' para mayor consistencia y seguridad,
     y para definir mejor quién puede acceder a esta información.
     """
-    # Verificación manual del token desde las cabeceras.
-    # Esta implementación parece incompleta, ya que `Security.verify_token` no está definido en `auth/security.py`.
-    # Asumiré que la intención era tener una función de verificación.
-    # has_access = Security.verify_token(req.headers)
-    # if not "iat" in has_access:
-    #     return JSONResponse(status_code=401, content=has_access)
-
+    token_user_id = current_user.get("user_id")
+    token_user_role = current_user.get("role")
+    if token_user_role != "administrador" and token_user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para ver las suscripciones de otro usuario.",
+        )
     try:
         # 'joinedload' se usa para cargar eficientemente las suscripciones y los planes
         # asociados en una sola consulta, evitando el problema de N+1 queries.

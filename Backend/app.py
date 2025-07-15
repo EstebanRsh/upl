@@ -9,6 +9,7 @@
 # -----------------------------------------------------------------------------
 
 # Importaciones de FastAPI y de los routers locales.
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routes.user_routes import user_router
@@ -37,16 +38,13 @@ origins = [
     "https://mi-empresa-isp.com",
     "https://www.mi-empresa-isp.com",
 ]
+# Configuración del Middleware de CORS (Cross-Origin Resource Sharing).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "*"
-    ],  # IMPORTANTE: En producción, se debe restringir a los dominios del frontend.
-    allow_credentials=True,  # Permite que las cookies se incluyan en las peticiones.
-    allow_methods=[
-        "*"
-    ],  # Permite todos los métodos HTTP (GET, POST, PUT, DELETE, etc.).
-    allow_headers=["*"],  # Permite todas las cabeceras HTTP.
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Inclusión de los routers en la aplicación principal.

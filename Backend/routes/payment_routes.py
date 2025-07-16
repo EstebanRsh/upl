@@ -7,6 +7,7 @@
 # 2. Consultar el historial de pagos de un usuario de forma paginada.
 # -----------------------------------------------------------------------------
 
+import os
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 import math
 from fastapi.responses import JSONResponse
@@ -18,10 +19,12 @@ from models.models import (
     Invoice,
     PaginatedResponse,
     PaymentOut,
+    Subscription,
 )
 from auth.security import get_current_user, is_admin
 from utils.pdf_generator import create_invoice_pdf
 from config.db import get_db
+from datetime import datetime
 
 # Creación de un router específico para las rutas de pagos.
 payment_router = APIRouter()
@@ -37,14 +40,14 @@ def add_payment(
     admin_user: dict = Depends(is_admin),
     db: Session = Depends(get_db),
 ):
-    """
-    Registra un pago para un usuario.
-    AÑADIDA LA VALIDACIÓN DEL MONTO DEL PAGO.
-    """
     try:
-        # 1. Busca la factura pendiente más antigua del usuario.
+        # Busca la factura pendiente más antigua del usuario, cargando relaciones
         invoice_to_pay = (
             db.query(Invoice)
+            .options(
+                joinedload(Invoice.user).joinedload(User.userdetail),
+                joinedload(Invoice.subscription).joinedload(Subscription.plan),
+            )
             .filter(
                 Invoice.user_id == payment_data.user_id, Invoice.status == "pending"
             )
@@ -59,11 +62,10 @@ def add_payment(
                 },
             )
 
-        # --- VALIDACIÓN DEL MONTO ---
-        # Comprueba si el monto del pago coincide con el total de la factura.
+        # --- Lógica de validación del monto (sin cambios) ---
         if payment_data.amount != invoice_to_pay.total_amount:
             return JSONResponse(
-                status_code=400,  # Bad Request
+                status_code=400,
                 content={
                     "message": "El monto del pago no coincide con el total de la factura.",
                     "monto_requerido": invoice_to_pay.total_amount,
@@ -71,42 +73,50 @@ def add_payment(
                 },
             )
 
-        # 2. Crea el nuevo registro del pago en la tabla 'payments'.
         new_payment = Payment(
             user_id=payment_data.user_id,
             amount=payment_data.amount,
-            invoice_id=invoice_to_pay.id,  # Asocia el pago a la factura encontrada.
+            invoice_id=invoice_to_pay.id,
         )
         db.add(new_payment)
-        db.flush()  # 'flush' envía los cambios a la BD sin hacer commit, útil para obtener el ID del nuevo pago.
+        db.flush()
 
-        # 3. Actualiza el estado de la factura a 'paid'.
         invoice_to_pay.status = "paid"
-        # La línea 'invoice_to_pay.payment_id = new_payment.id' parece estar ausente en tu código original,
-        # pero sería una buena adición para relacionar la factura con el pago directamente.
 
-        # 4. Prepara los datos para generar el recibo en PDF.
+        # --- Preparamos el DICCIONARIO DE DATOS COMPLETO para el PDF ---
         user_details = invoice_to_pay.user.userdetail
         plan_details = invoice_to_pay.subscription.plan
+
         pdf_data = {
             "invoice_id": invoice_to_pay.id,
-            "client_name": f"{user_details.firstname} {user_details.lastname}",
+            "issue_date": invoice_to_pay.issue_date.strftime("%d/%m/%Y"),
+            "due_date": invoice_to_pay.due_date.strftime("%d/%m/%Y"),
             "payment_date": new_payment.payment_date.strftime("%d/%m/%Y"),
+            "client_name": f"{user_details.firstname} {user_details.lastname}",
+            "client_dni": user_details.dni,
+            "client_address": user_details.address,
             "plan_name": plan_details.name,
+            "base_amount": invoice_to_pay.base_amount,
+            "late_fee": invoice_to_pay.late_fee,
             "amount_paid": new_payment.amount,
         }
-        # Llama a la función de utilidad para crear el PDF.
-        pdf_path = create_invoice_pdf(pdf_data)
 
-        # 5. Guarda la ruta relativa del PDF generado en el registro de la factura.
-        invoice_to_pay.receipt_pdf_url = pdf_path
+        # Llama a la nueva función de utilidad para crear el PDF
+        pdf_filename = create_invoice_pdf(pdf_data)
+
+        # Guarda la ruta relativa del PDF generado
+        now = datetime.now()  # No necesitas datetime.datetime.now()
+        year = str(now.year)
+        month = str(now.month).zfill(2)
+        full_relative_path = os.path.join(year, month, pdf_filename).replace("\\", "/")
+        invoice_to_pay.receipt_pdf_url = full_relative_path
 
         db.commit()
         return JSONResponse(
             status_code=201,
             content={
-                "message": "Pago registrado y recibo generado.",
-                "pdf_path": pdf_path,
+                "message": "Pago registrado y factura mejorada generada.",
+                "pdf_path": invoice_to_pay.receipt_pdf_url,
             },
         )
     except Exception as e:

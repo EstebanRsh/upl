@@ -117,3 +117,32 @@ def admin_auth_client(client, db_session):
     yield client
 
     client.headers.pop("Authorization", None)
+
+
+@pytest.fixture
+def create_test_user(admin_auth_client):
+    """
+    Un factory fixture para crear usuarios de prueba con datos únicos.
+    Esto nos permite crear varios usuarios diferentes en nuestros tests.
+    """
+
+    def _create_user(username, email, dni):
+        response = admin_auth_client.post(
+            "/api/admin/users/add",
+            json={
+                "username": username,
+                "password": "testpassword123",
+                "email": email,
+                "dni": dni,
+                "firstname": "Test",
+                "lastname": "User",
+                "address": "123 Test Street",
+                "phone": "123456789",
+            },
+        )
+        assert (
+            response.status_code == 201
+        ), f"No se pudo crear el usuario de prueba: {response.json()}"
+        return response.json()
+
+    return _create_user

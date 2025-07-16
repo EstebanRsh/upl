@@ -236,7 +236,7 @@ def process_overdue_invoices(
             # 4. Verifica si se debe suspender el servicio
             days_overdue = (today - invoice.due_date.date()).days
             if days_overdue >= days_for_suspension:
-                subscription = db.query(Subscription).get(invoice.subscription_id)
+                subscription = db.get(Subscription, invoice.subscription_id)
                 if subscription and subscription.status == "active":
                     subscription.status = "suspended"
                     suspended_count += 1

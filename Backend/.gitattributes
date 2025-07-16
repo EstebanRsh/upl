@@ -1,0 +1,11 @@
+# Configuración por defecto: Git debe intentar adivinar si un archivo es de texto y manejar los finales de línea.
+* text=auto
+
+# Especificar que las siguientes extensiones son archivos binarios.
+# Git no debe tocar sus finales de línea ni intentar fusionarlos.
+*.pdf   binary
+*.jpg   binary
+*.jpeg  binary
+*.png   binary
+*.zip   binary
+*.rar   binary

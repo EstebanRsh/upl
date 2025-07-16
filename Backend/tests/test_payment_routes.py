@@ -2,43 +2,7 @@
 
 import pytest
 from datetime import datetime, timedelta
-from models.models import User, InternetPlan, Subscription, Invoice, Payment
-
-
-@pytest.fixture
-def setup_user_with_invoice(
-    db_session, admin_auth_client, create_test_user, create_test_plan
-):
-    """
-    Un fixture completo que crea un usuario, un plan, una suscripción
-    y una factura pendiente lista para ser pagada.
-    """
-    # Arrange: Crear usuario, plan y suscripción
-    create_test_user("payer_user", "payer@test.com", 5050)
-    user = db_session.query(User).filter_by(username="payer_user").first()
-
-    create_test_plan("Plan de Pago", 200, 55.50)
-    plan = db_session.query(InternetPlan).filter_by(name="Plan de Pago").first()
-
-    assign_res = admin_auth_client.post(
-        "/api/admin/subscriptions/assign", json={"user_id": user.id, "plan_id": plan.id}
-    )
-    assert assign_res.status_code == 201
-    subscription = db_session.query(Subscription).filter_by(user_id=user.id).first()
-
-    # Arrange: Crear una factura para esa suscripción
-    invoice = Invoice(
-        user_id=user.id,
-        subscription_id=subscription.id,
-        due_date=datetime.now() + timedelta(days=15),
-        base_amount=plan.price,
-        total_amount=plan.price,  # Sin mora
-    )
-    db_session.add(invoice)
-    db_session.commit()
-    db_session.refresh(invoice)
-
-    return {"user": user, "plan": plan, "invoice": invoice}
+from models.models import Payment
 
 
 # --- Pruebas para POST /payments/add ---

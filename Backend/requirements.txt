@@ -12,8 +12,10 @@ PyJWT               # Para generar y decodificar JSON Web Tokens (JWT).
 pytz                # Para el manejo de zonas horarias.
 passlib==1.7.4      # Para hashear y verificar contraseñas de forma segura con el algoritmo bcrypt.
 bcrypt==4.0.1
-reportlab           # La librería utilizada para generar los archivos PDF.
+#reportlab           # Para generar reportes en PDF.
 python-dateutil     # Utilidades para el manejo de fechas y horas.
 python-dotenv       # Para cargar variables de entorno desde un archivo .env, útil para la configuración.
 httpx
 pytest
+Jinja2
+xhtml2pdf

@@ -1,125 +1,66 @@
-# utils/pdf_generator.py
-# -----------------------------------------------------------------------------
-# UTILIDAD PARA LA GENERACIÓN DE ARCHIVOS PDF
-# -----------------------------------------------------------------------------
-# Este módulo contiene una función de utilidad para crear un recibo de pago
-# en formato PDF usando la librería 'reportlab'.
-# -----------------------------------------------------------------------------
-# utils/pdf_generator.py
 import os
 import datetime
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.units import inch
-from reportlab.lib import colors
+from jinja2 import Environment, FileSystemLoader
+from xhtml2pdf import pisa
+import io
+
+# ✨ Importaciones actualizadas para una construcción de URL más robusta ✨
+import urllib.parse
+import urllib.request
 
 
-def create_invoice_pdf(invoice_data: dict):
-    """
-    Genera un archivo PDF para una factura/recibo con un diseño mejorado.
-    """
+# Carpeta de plantillas
+TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "..", "templates")
+
+
+def create_invoice_pdf(invoice_data: dict, logo_path: str = "logo.png") -> str:
+    # Directorio de salida para las facturas
     now = datetime.datetime.now()
     year = str(now.year)
-    month = str(now.month).zfill(2)
+    month = f"{now.month:02d}"
+    out_dir = os.path.join("facturas", year, month)
+    os.makedirs(out_dir, exist_ok=True)
 
-    file_path = os.path.join("facturas", year, month)
-    os.makedirs(file_path, exist_ok=True)
+    filename = f"recibo_{invoice_data['invoice_id']}.pdf"
+    full_path = os.path.join(out_dir, filename)
 
-    file_name = f"recibo_factura_{invoice_data['invoice_id']}.pdf"
-    full_path = os.path.join(file_path, file_name)
+    # Configurar Jinja2 para cargar plantillas desde TEMPLATES_DIR
+    env = Environment(loader=FileSystemLoader(TEMPLATES_DIR))
+    template = env.get_template("invoice.html")
 
-    c = canvas.Canvas(full_path, pagesize=letter)
-    width, height = letter
+    # Renderizar el HTML con los datos de la factura
+    html = template.render(**invoice_data, logo_path=logo_path)
 
-    # --- Encabezado ---
-    c.setFont("Helvetica-Bold", 18)
-    c.drawString(1 * inch, height - 1 * inch, "FACTURA")
+    # Crear el PDF usando xhtml2pdf
+    source_html = io.BytesIO(html.encode("utf-8"))
+    result_file = open(full_path, "wb")
 
-    # Aquí podrías añadir un logo si tuvieras uno
-    # c.drawImage("path/a/tu/logo.png", width - 2.5*inch, height - 1.25*inch, width=1.5*inch, preserveAspectRatio=True)
-
-    c.setFont("Helvetica", 10)
-    c.drawString(
-        width - 3.5 * inch,
-        height - 0.9 * inch,
-        "FACTURA N°: " + str(invoice_data["invoice_id"]),
-    )
-    c.drawString(
-        width - 3.5 * inch,
-        height - 1.1 * inch,
-        "Fecha de Emisión: " + invoice_data["issue_date"],
-    )
-    c.drawString(
-        width - 3.5 * inch,
-        height - 1.3 * inch,
-        "Fecha de Vencimiento: " + invoice_data["due_date"],
-    )
-    c.drawString(
-        width - 3.5 * inch,
-        height - 1.5 * inch,
-        "Fecha de Pago: " + invoice_data["payment_date"],
+    # ✨ Construcción de la base_url más robusta y multiplataforma ✨
+    # Obtener la ruta absoluta del directorio de plantillas
+    absolute_templates_path = os.path.abspath(TEMPLATES_DIR)
+    # Convertir la ruta a un formato de URL 'file://'
+    # os.sep añade la barra correcta para el sistema operativo
+    base_url = urllib.parse.urljoin(
+        "file:", urllib.request.pathname2url(absolute_templates_path + os.sep)
     )
 
-    # --- Datos del Cliente y la Empresa ---
-    c.setStrokeColor(colors.grey)
-    c.line(1 * inch, height - 1.8 * inch, width - 1 * inch, height - 1.8 * inch)
+    try:
+        pisa_status = pisa.CreatePDF(
+            source_html,  # el HTML a convertir
+            dest=result_file,  # el manejador de archivo donde se escribirá el PDF
+            base_url=base_url,  # ✨ ¡La URL base es CRUCIAL para que encuentre el CSS y las imágenes! ✨
+            show_error_as_pdf=True,  # ✨ Esto generará un PDF con errores si los hay, muy útil para depurar ✨
+        )
 
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(1 * inch, height - 2.1 * inch, "Facturado a:")
-    c.drawString(width / 2, height - 2.1 * inch, "De:")
+    finally:
+        result_file.close()
 
-    c.setFont("Helvetica", 10)
-    c.drawString(1 * inch, height - 2.3 * inch, invoice_data["client_name"])
-    c.drawString(1 * inch, height - 2.5 * inch, f"DNI: {invoice_data['client_dni']}")
-    c.drawString(1 * inch, height - 2.7 * inch, invoice_data["client_address"])
+    if pisa_status.err:
+        print(f"Error al crear el PDF con xhtml2pdf: {pisa_status.err}")
+        # Si show_error_as_pdf=True, el PDF generado contendrá los errores
+        # No es estrictamente necesario lanzar una excepción aquí, pero lo mantendremos por si acaso
+        raise Exception(
+            "Error al crear el PDF con xhtml2pdf. Revisa el PDF generado para detalles."
+        )
 
-    # Datos de tu empresa (puedes cargarlos desde la BD o ponerlos aquí)
-    c.drawString(width / 2, height - 2.3 * inch, "Mi Empresa ISP S.A.")
-    c.drawString(width / 2, height - 2.5 * inch, "CUIT: 30-12345678-9")
-    c.drawString(width / 2, height - 2.7 * inch, "Dirección Ficticia 123, Ciudad")
-
-    # --- Tabla de Detalles ---
-    c.line(1 * inch, height - 3.2 * inch, width - 1 * inch, height - 3.2 * inch)
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(1.1 * inch, height - 3.4 * inch, "Descripción")
-    c.drawString(5 * inch, height - 3.4 * inch, "Cantidad")
-    c.drawString(6 * inch, height - 3.4 * inch, "Precio Unitario")
-    c.drawString(7 * inch, height - 3.4 * inch, "Total")
-    c.line(1 * inch, height - 3.5 * inch, width - 1 * inch, height - 3.5 * inch)
-
-    c.setFont("Helvetica", 10)
-    y_position = height - 3.7 * inch
-
-    # Servicio principal
-    c.drawString(
-        1.1 * inch,
-        y_position,
-        f"Servicio de Internet - Plan '{invoice_data['plan_name']}'",
-    )
-    c.drawString(5.2 * inch, y_position, "1")
-    c.drawString(6.2 * inch, y_position, f"${invoice_data['base_amount']:.2f}")
-    c.drawString(7.2 * inch, y_position, f"${invoice_data['base_amount']:.2f}")
-    y_position -= 0.3 * inch
-
-    # Cargo por mora (si aplica)
-    if invoice_data["late_fee"] > 0:
-        c.drawString(1.1 * inch, y_position, "Cargo por mora")
-        c.drawString(5.2 * inch, y_position, "1")
-        c.drawString(6.2 * inch, y_position, f"${invoice_data['late_fee']:.2f}")
-        c.drawString(7.2 * inch, y_position, f"${invoice_data['late_fee']:.2f}")
-
-    # --- Total ---
-    c.line(width - 4 * inch, height - 8 * inch, width - 1 * inch, height - 8 * inch)
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(width - 3.9 * inch, height - 8.2 * inch, "TOTAL PAGADO:")
-    c.drawString(
-        width - 2 * inch, height - 8.2 * inch, f"${invoice_data['amount_paid']:.2f}"
-    )
-
-    # --- Pie de página ---
-    c.setFont("Helvetica-Oblique", 9)
-    c.drawCentredString(width / 2, 0.75 * inch, "Gracias por su pago.")
-
-    c.save()
-    # Devuelve la ruta relativa completa para que la BD la guarde.
-    return file_name
+    return filename

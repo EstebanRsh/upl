@@ -88,6 +88,9 @@ def test_admin_can_get_user_payment_history(
     }
     admin_auth_client.post("/api/payments/add", json=payment_data)
 
+    # Refresca el objeto user después del commit en add_payment para evitar ObjectDeletedError
+    db_session.refresh(user)  # ✨ Agrega esta línea ✨
+
     # Act
     response = admin_auth_client.get(f"/api/users/{user.id}/payments")
 

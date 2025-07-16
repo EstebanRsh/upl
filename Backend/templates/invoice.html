@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Factura {{ invoice_id }}</title>
+  <link rel="stylesheet" href="invoice.css" />
+</head>
+<body>
+  <div class="invoice-container">
+    <header class="header">
+      <img class="logo" src="{{ logo_path }}" alt="Logo Empresa" />
+      <div class="invoice-info-box">
+        <h1>FACTURA</h1>
+        <p>N° {{ invoice_id }}</p>
+        <p>Emisión: {{ issue_date }}</p>
+        <p>Vto: {{ due_date }}</p>
+        <p>Pago: {{ payment_date }}</p>
+      </div>
+    </header>
+
+    <section class="parties">
+      <div class="box">
+        <h2>FACTURADO A:</h2>
+        <p>{{ client_name }}</p>
+        <p>DNI: {{ client_dni }}</p>
+        <p>{{ client_address }}</p>
+      </div>
+      <div class="box">
+        <h2>FACTURADO POR:</h2>
+        <p>Mi Empresa ISP S.A.</p>
+        <p>CUIT: 30-12345678-9</p>
+        <p>Dirección Ficticia 123, Ciudad</p>
+      </div>
+    </section>
+
+    <table class="items">
+      <thead>
+        <tr>
+          <th>DESCRIPCIÓN</th><th>CANT.</th><th>PRECIO UNIT.</th><th>TOTAL</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Plan “{{ plan_name }}”</td>
+          <td class="right">1</td>
+          <td class="right">${{ "%.2f"|format(base_amount) }}</td>
+          <td class="right">${{ "%.2f"|format(base_amount) }}</td>
+        </tr>
+        {% if late_fee > 0 %}
+        <tr>
+          <td>Cargo por mora</td>
+          <td class="right">1</td>
+          <td class="right">${{ "%.2f"|format(late_fee) }}</td>
+          <td class="right">${{ "%.2f"|format(late_fee) }}</td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+
+    <div class="total-section">
+      <div class="total-box box">
+        <p>Total a Pagar: <strong>${{ "%.2f"|format(amount_paid) }}</strong></p>
+      </div>
+    </div>
+
+    <footer>
+      <p>Gracias por su pago y confianza.</p>
+      <p>Mi Empresa ISP S.A. | Contacto: (123) 456-7890 | info@miempresa.com</p>
+    </footer>
+  </div>
+</body>
+</html>

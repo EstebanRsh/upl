@@ -1,0 +1,163 @@
+/* Reset básico */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Variables de color (¡NUEVO!) */
+:root {
+  --primary-color: #3f51b5; /* Un azul índigo vibrante */
+  --accent-color: #ff9800; /* Un naranja para resaltar */
+  --text-color: #333;
+  --light-grey: #f8f8f8;
+  --medium-grey: #ddd;
+  --dark-grey: #555;
+  --white: #fff;
+}
+
+/* Tipografía general */
+body {
+  font-family: "Open Sans", sans-serif; /* Puedes cambiar esto si quieres otra fuente compatible */
+  color: var(--text-color);
+  font-size: 11px; /* Tamaño de fuente estándar para documentos */
+  line-height: 1.6;
+  padding: 1.5cm; /* Más espacio alrededor del documento */
+  background-color: #f0f2f5; /* Un fondo suave para un toque más moderno */
+}
+
+/* Contenedor principal de la factura (¡NUEVO!) */
+.invoice-container {
+  max-width: 21cm; /* Aproximadamente el ancho de un A4 */
+  margin: 0 auto;
+  padding: 2cm;
+  background-color: var(--white);
+  border-radius: 8px; /* Bordes ligeramente redondeados */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); /* Sutil sombra para un efecto de "elevación" */
+}
+
+/* Encabezado */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start; /* Alinear el contenido en la parte superior */
+  margin-bottom: 2cm; /* Mayor espacio debajo del encabezado */
+}
+.logo {
+  height: 2.5cm; /* Hacer el logo un poco más grande */
+  max-width: 5cm;
+  object-fit: contain; /* Asegura que la imagen se ajuste sin distorsionarse */
+}
+.invoice-info-box {
+  /* Renombrado de .invoice-box */
+  background: var(--primary-color); /* Usar el color principal */
+  color: var(--white);
+  padding: 1cm 1.5cm;
+  text-align: right;
+  border-radius: 6px;
+  min-width: 6cm;
+}
+.invoice-info-box h1 {
+  font-size: 24px; /* Título de factura más prominente */
+  margin-bottom: 0.5cm;
+  text-transform: uppercase;
+  letter-spacing: 1px; /* Un poco de espaciado entre letras */
+}
+.invoice-info-box p {
+  font-size: 10px;
+  margin-bottom: 0.2cm;
+}
+
+/* Datos de cliente y empresa */
+.parties {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1.5cm;
+}
+.box {
+  width: 48%;
+  background: var(--light-grey);
+  padding: 1cm;
+  border-radius: 6px;
+  border: 1px solid var(--medium-grey); /* Borde sutil */
+}
+.box h2 {
+  font-size: 12px;
+  margin-bottom: 0.5cm;
+  color: var(--dark-grey);
+  text-transform: uppercase;
+}
+.box p {
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* Tabla de ítems */
+table.items {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 2cm;
+}
+.items th,
+.items td {
+  border: 1px solid var(--medium-grey);
+  padding: 10px; /* Más padding en las celdas */
+  text-align: left;
+}
+.items th {
+  background: var(
+    --primary-color
+  ); /* Encabezados de tabla con color principal */
+  color: var(--white);
+  font-size: 11px;
+  text-align: left;
+  padding: 12px 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.items tr:nth-child(even) {
+  background: var(--light-grey); /* Efecto "cebra" para las filas de la tabla */
+}
+.items .right {
+  text-align: right;
+}
+
+/* Total */
+.total-section {
+  /* Nuevo contenedor para alinear el total a la derecha */
+  clear: both; /* Limpiar cualquier flotación anterior */
+  width: 100%;
+  display: flex;
+  justify-content: flex-end; /* Mover el total a la derecha */
+}
+
+.total-box {
+  width: 40%;
+  background: var(
+    --primary-color
+  ); /* Usar el color principal para destacar el total */
+  color: var(--white);
+  padding: 1cm;
+  border-radius: 6px;
+  text-align: right;
+  margin-bottom: 1cm;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); /* Sutil sombra */
+}
+.total-box p {
+  font-size: 16px;
+  font-weight: bold;
+}
+.total-box strong {
+  font-size: 20px; /* Tamaño más grande para la cantidad total */
+  margin-left: 10px;
+}
+
+/* Pie de página */
+footer {
+  text-align: center;
+  font-size: 9px;
+  color: var(--dark-grey);
+  margin-top: 3cm; /* Más espacio desde el total */
+  padding-top: 1cm;
+  border-top: 1px dashed var(--medium-grey); /* Línea divisoria punteada */
+}

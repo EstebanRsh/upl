@@ -8,10 +8,10 @@
 # 3. Importar e incluir todos los routers de los diferentes módulos de la API.
 # -----------------------------------------------------------------------------
 
-# Importaciones de FastAPI y de los routers locales.
-import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from config.db import Base, engine  # Modificado
 from routes.user_routes import user_router
 from routes.plan_routes import plan_router
 from routes.payment_routes import payment_router
@@ -20,25 +20,21 @@ from routes.admin_routes import admin_router
 from routes.token_routes import token_router
 from routes.billing_routes import billing_router
 
-# Creación de la instancia de FastAPI.
-# Se le añaden metadatos que se usarán en la documentación automática (en /docs o /redoc).
+# Crear las tablas en la base de datos
+# Base.metadata.create_all(bind=engine)
+
 app = FastAPI(
     title="API para ISP",
     description="Backend para la gestión de clientes y pagos de un proveedor de internet.",
     version="1.0.0",
 )
 
-# Configuración del Middleware de CORS (Cross-Origin Resource Sharing).
-# Es una medida de seguridad del navegador que impide que una página web haga peticiones
-# a un dominio diferente al que la sirvió. Este middleware le dice al navegador que
-# permita peticiones desde cualquier origen ('*').
 origins = [
-    "http://localhost:3000",  # Si tu frontend corre en el puerto 3000
+    "http://localhost:3000",
     "http://localhost:8080",
     "https://mi-empresa-isp.com",
     "https://www.mi-empresa-isp.com",
 ]
-# Configuración del Middleware de CORS (Cross-Origin Resource Sharing).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -47,10 +43,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Inclusión de los routers en la aplicación principal.
-# Cada router contiene un conjunto de rutas relacionadas con una entidad específica (usuarios, planes, etc.).
-# 'prefix="/api"' añade "/api" al principio de todas las rutas de ese router.
-# 'tags' agrupa las rutas en la documentación de la API.
+# Inclusión de los routers
 app.include_router(user_router, prefix="/api", tags=["Usuarios"])
 app.include_router(plan_router, prefix="/api", tags=["Planes de Internet"])
 app.include_router(payment_router, prefix="/api", tags=["Pagos"])
@@ -60,11 +53,8 @@ app.include_router(token_router, prefix="/api", tags=["Token"])
 app.include_router(billing_router, prefix="/api", tags=["Facturación"])
 
 
-# Definición de una ruta raíz de bienvenida.
-# Es útil para hacer una comprobación rápida de que el servidor está funcionando.
 @app.get("/")
 def read_root():
-    """Ruta de bienvenida para verificar el estado de la API."""
     return {"welcome": "Bienvenido a la API de ISP"}
 
 

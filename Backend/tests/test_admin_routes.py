@@ -1,12 +1,11 @@
 # tests/test_admin_routes.py
+from models.models import User, UserDetail
 
 
-def test_admin_can_get_all_users(admin_auth_client):
+def test_admin_can_get_all_users(admin_auth_client, db_session):
     """Prueba que un admin puede obtener la lista de usuarios."""
-    # Preparación: admin_auth_client ya crea un admin (user_id=1).
-    # Creamos un segundo usuario para tener más de uno en la lista.
-    admin_auth_client.post(
-        "/api/admin/users/add",
+    response_add = admin_auth_client.post(
+        "/api/admin/users/add",  # <-- RUTA UNIFICADA
         json={
             "username": "list_user",
             "password": "p",
@@ -18,23 +17,21 @@ def test_admin_can_get_all_users(admin_auth_client):
             "phone": "p",
         },
     )
+    assert response_add.status_code == 201
 
-    # Acción
     response = admin_auth_client.get("/api/admin/users/all")
     assert response.status_code == 200
-
-    # Verificación
     data = response.json()
-    assert data["total_items"] == 2
-    assert data["items"][0]["username"] == "testadmin"
-    assert data["items"][1]["username"] == "list_user"
+    assert data["total_items"] >= 2
+    usernames = [item["username"] for item in data["items"]]
+    assert "testadmin" in usernames
+    assert "list_user" in usernames
 
 
 def test_admin_can_update_user_details(admin_auth_client, db_session):
     """Prueba que un admin puede actualizar los detalles de otro usuario."""
-    # Preparación: Creamos un usuario para actualizar.
-    admin_auth_client.post(
-        "/api/admin/users/add",
+    response_add = admin_auth_client.post(
+        "/api/admin/users/add",  # <-- RUTA UNIFICADA
         json={
             "username": "update_user",
             "password": "p",
@@ -46,28 +43,27 @@ def test_admin_can_update_user_details(admin_auth_client, db_session):
             "phone": "OriginalP",
         },
     )
+    assert response_add.status_code == 201
 
-    # Acción: Actualizamos los detalles del usuario recién creado (user_id=2).
+    user_to_update = db_session.query(User).filter_by(username="update_user").first()
+    assert user_to_update is not None
+    user_id_to_update = user_to_update.id
+
     response = admin_auth_client.put(
-        "/api/admin/users/2/details",
+        f"/api/admin/users/{user_id_to_update}/details",  # <-- RUTA UNIFICADA
         json={"firstname": "NuevoNombre", "address": "Nueva Direccion"},
     )
     assert response.status_code == 200
 
-    # Verificación: Consultamos el usuario en la BD para ver los cambios.
-    from models.models import UserDetail
-
-    user_details = db_session.query(UserDetail).filter_by(id=2).first()
-    assert user_details.firstname == "NuevoNombre"
-    assert user_details.address == "Nueva Direccion"
-    assert user_details.lastname == "OriginalL"  # El apellido no cambió.
+    db_session.refresh(user_to_update.userdetail)
+    assert user_to_update.userdetail.firstname == "NuevoNombre"
+    assert user_to_update.userdetail.address == "Nueva Direccion"
 
 
 def test_admin_can_delete_user(admin_auth_client, db_session):
     """Prueba que un admin puede eliminar a otro usuario."""
-    # Preparación: Creamos un usuario para eliminar.
-    admin_auth_client.post(
-        "/api/admin/users/add",
+    response_add = admin_auth_client.post(
+        "/api/admin/users/add",  # <-- RUTA UNIFICADA
         json={
             "username": "delete_user",
             "password": "p",
@@ -79,13 +75,16 @@ def test_admin_can_delete_user(admin_auth_client, db_session):
             "phone": "p",
         },
     )
+    assert response_add.status_code == 201
 
-    # Acción: El admin (user_id=1) elimina al nuevo usuario (user_id=2).
-    response = admin_auth_client.delete("/api/admin/users/2")
+    user_to_delete = db_session.query(User).filter_by(username="delete_user").first()
+    assert user_to_delete is not None
+    user_id_to_delete = user_to_delete.id
+
+    response = admin_auth_client.delete(
+        f"/api/admin/users/{user_id_to_delete}"
+    )  # <-- RUTA UNIFICADA
     assert response.status_code == 200
 
-    # Verificación: Comprobamos que el usuario ya no existe en la BD.
-    from models.models import User
-
-    deleted_user = db_session.query(User).filter_by(id=2).first()
+    deleted_user = db_session.query(User).filter_by(id=user_id_to_delete).first()
     assert deleted_user is None

@@ -15,3 +15,5 @@ bcrypt==4.0.1
 reportlab           # La librería utilizada para generar los archivos PDF.
 python-dateutil     # Utilidades para el manejo de fechas y horas.
 python-dotenv       # Para cargar variables de entorno desde un archivo .env, útil para la configuración.
+httpx
+pytest

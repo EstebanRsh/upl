@@ -332,10 +332,3 @@ class Setting(BaseModel):
     setting_name: str
     setting_value: str
     description: str | None = None
-
-
-# --- Creación de Tablas y Sesión de Base de Datos ---
-
-# Esta línea instruye a SQLAlchemy para que cree en la base de datos todas las tablas
-# que heredan de `Base` y que aún no existan.
-Base.metadata.create_all(engine)

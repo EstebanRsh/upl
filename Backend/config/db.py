@@ -1,8 +1,7 @@
 # config/db.py
-
 import os
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker  # ¡Importante añadir sessionmaker!
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 from dotenv import load_dotenv
 
@@ -15,19 +14,16 @@ DB_NAME = os.getenv("DB_NAME")
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}"
 
 engine = create_engine(DATABASE_URL)
-
-
-# 1. Creamos una fábrica de sesiones en lugar de una sesión global.
-#    Esto nos permitirá crear una sesión nueva y fresca para cada petición.
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
 Base = declarative_base()
 
 
-# 2. Creamos la dependencia de FastAPI.
-#    Esta función se encargará de crear la sesión, entregarla a la ruta (yield db),
-#    y asegurarse de que siempre se cierre al final (finally: db.close()).
+# --- Dependencia de Base de Datos ---
 def get_db():
+    """
+    Esta función es una dependencia de FastAPI.
+    Creará una nueva sesión de BD para cada petición y la cerrará al final.
+    """
     db = SessionLocal()
     try:
         yield db

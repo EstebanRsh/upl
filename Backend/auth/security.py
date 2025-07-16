@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 import datetime
 import pytz  # Para manejar zonas horarias de forma correcta.
 import jwt  # Para la creación y validación de JSON Web Tokens.
+import uuid
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from passlib.context import CryptContext  # Para el hasheo de contraseñas.
@@ -64,6 +65,9 @@ class Security:
             "sub": authUser.username,  # 'Subject' o sujeto, identifica al usuario.
             "user_id": authUser.id,  # ID del usuario, útil en las rutas.
             "role": authUser.role,  # Rol, para el control de acceso (autorización).
+            "jti": str(
+                uuid.uuid4()
+            ),  # ID único del token (JWT ID), útil para la revocación.
         }
         # Se codifica el payload junto con la clave secreta para generar el token.
         return jwt.encode(payload, cls.secret, algorithm="HS256")
@@ -81,6 +85,7 @@ class Security:
             "exp": hoy + datetime.timedelta(days=1),  # Duración más larga.
             "iat": hoy,
             "sub": authUser.username,
+            "jti": str(uuid.uuid4()),  # ID único del token.
         }
         return jwt.encode(payload, cls.secret, algorithm="HS256")
 

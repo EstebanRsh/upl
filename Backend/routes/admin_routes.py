@@ -32,7 +32,12 @@ admin_router = APIRouter()
 # --- RUTAS DE ADMINISTRACIÓN DE USUARIOS ---
 
 
-@admin_router.post("/admin/users/add", status_code=status.HTTP_201_CREATED)
+@admin_router.post(
+    "/admin/users/add",
+    status_code=status.HTTP_201_CREATED,
+    summary="Crear un nuevo usuario",
+    description="**Permisos requeridos: `administrador`**.<br>Registra un nuevo usuario (cliente) y sus detalles personales en el sistema.",
+)
 def add_user(user_data: InputUser, db: Session = Depends(get_db)):
     """Registra un nuevo usuario (cliente) y sus detalles personales."""
     try:
@@ -65,7 +70,12 @@ def add_user(user_data: InputUser, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@admin_router.get("/admin/users/all", response_model=PaginatedResponse[UserOut])
+@admin_router.get(
+    "/admin/users/all",
+    response_model=PaginatedResponse[UserOut],
+    summary="Obtener todos los usuarios",
+    description="**Permisos requeridos: `administrador`**.<br>Obtiene una lista paginada y opcionalmente filtrada por nombre de todos los usuarios del sistema.",
+)
 def get_all_users(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
@@ -111,7 +121,11 @@ def get_all_users(
     )
 
 
-@admin_router.put("/admin/users/{user_id}/details")
+@admin_router.put(
+    "/admin/users/{user_id}/details",
+    summary="Actualizar detalles de un usuario",
+    description="**Permisos requeridos: `administrador`**.<br>Permite a un administrador actualizar los detalles personales de cualquier cliente.",
+)
 def update_user_details(
     user_id: int,
     user_data: UpdateUserDetail,
@@ -133,7 +147,11 @@ def update_user_details(
     }
 
 
-@admin_router.delete("/admin/users/{user_id}")
+@admin_router.delete(
+    "/admin/users/{user_id}",
+    summary="Eliminar un usuario",
+    description="**Permisos requeridos: `administrador`**.<br>Elimina a un usuario y todos sus datos asociados en cascada. Un administrador no puede eliminarse a sí mismo.",
+)
 def delete_user(
     user_id: int, admin_user: dict = Depends(is_admin), db: Session = Depends(get_db)
 ):

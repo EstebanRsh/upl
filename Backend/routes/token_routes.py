@@ -19,7 +19,11 @@ from config.db import get_db
 token_router = APIRouter()
 
 
-@token_router.post("/token/refresh")
+@token_router.post(
+    "/token/refresh",
+    summary="Renovar token de acceso",
+    description="**Permisos requeridos: `Usuario autenticado`**.<br>Usa el `refresh_token` (almacenado en una cookie httpOnly) para obtener un nuevo `access_token` sin necesidad de volver a iniciar sesión. Implementa rotación de tokens para mayor seguridad.",
+)
 def refresh_access_token(
     request: Request, response: Response, db: Session = Depends(get_db)
 ):

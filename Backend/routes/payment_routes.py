@@ -27,7 +27,11 @@ from config.db import get_db
 payment_router = APIRouter()
 
 
-@payment_router.post("/payments/add")
+@payment_router.post(
+    "/payments/add",
+    summary="Registrar un nuevo pago",
+    description="**Permisos requeridos: `administrador`**.<br>Registra un pago para la factura pendiente más antigua de un usuario. Si el pago es exitoso, actualiza el estado de la factura a 'pagada' y genera un recibo en PDF.",
+)
 def add_payment(
     payment_data: InputPayment,
     admin_user: dict = Depends(is_admin),
@@ -111,7 +115,16 @@ def add_payment(
 
 
 @payment_router.get(
-    "/users/{user_id}/payments", response_model=PaginatedResponse[PaymentOut]
+    "/users/{user_id}/payments",
+    response_model=PaginatedResponse[PaymentOut],
+    summary="Consultar historial de pagos de un usuario",
+    description="""
+Obtiene el historial de pagos de un usuario de forma paginada.
+
+**Permisos:**
+- **Cliente**: Puede consultar **únicamente su propio** historial de pagos.
+- **Administrador**: Puede consultar el historial de pagos de **cualquier** usuario.
+""",
 )
 def get_user_payments(
     user_id: int,

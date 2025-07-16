@@ -43,7 +43,17 @@ def assign_plan_to_user(
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-@subscription_router.get("/users/{user_id}/subscriptions")
+@subscription_router.get(
+    "/users/{user_id}/subscriptions",
+    summary="Consultar suscripciones de un usuario",
+    description="""
+Obtiene las suscripciones activas de un usuario específico, incluyendo los detalles del plan.
+
+**Permisos:**
+- **Cliente**: Puede consultar **únicamente sus propias** suscripciones.
+- **Administrador**: Puede consultar las suscripciones de **cualquier** usuario.
+""",
+)
 def get_user_subscriptions(
     user_id: int,
     current_user: dict = Depends(get_current_user),

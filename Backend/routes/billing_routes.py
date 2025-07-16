@@ -27,7 +27,11 @@ from config.db import get_db
 billing_router = APIRouter()
 
 
-@billing_router.post("/admin/settings/set")
+@billing_router.post(
+    "/admin/settings/set",
+    summary="Establecer una regla de negocio",
+    description="**Permisos requeridos: `administrador`**.<br>Crea o actualiza una regla de negocio en el sistema, como los días de pago o el monto de la multa por mora.",
+)
 def set_business_setting(
     setting_data: Setting,
     admin_user: dict = Depends(is_admin),
@@ -67,7 +71,11 @@ def set_business_setting(
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-@billing_router.post("/admin/invoices/generate-monthly")
+@billing_router.post(
+    "/admin/invoices/generate-monthly",
+    summary="Generar facturas mensuales",
+    description="**Permisos requeridos: `administrador`**.<br>Ejecuta el proceso masivo que crea las facturas para todas las suscripciones activas. Evita la creación de duplicados si ya existe una factura para el mes actual.",
+)
 def generate_monthly_invoices(
     admin_user: dict = Depends(is_admin), db: Session = Depends(get_db)
 ):
@@ -140,7 +148,17 @@ def generate_monthly_invoices(
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-@billing_router.get("/invoices/{invoice_id}/download")
+@billing_router.get(
+    "/invoices/{invoice_id}/download",
+    summary="Descargar recibo de factura en PDF",
+    description="""
+Permite descargar el recibo en PDF de una factura específica.
+
+**Permisos:**
+- **Cliente**: Puede descargar **únicamente los recibos de sus propias** facturas pagadas.
+- **Administrador**: Puede descargar el recibo de **cualquier** factura pagada.
+""",
+)
 def download_invoice_pdf(
     invoice_id: int,
     current_user: dict = Depends(get_current_user),
@@ -189,7 +207,11 @@ def download_invoice_pdf(
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-@billing_router.post("/admin/invoices/process-overdue")
+@billing_router.post(
+    "/admin/invoices/process-overdue",
+    summary="Procesar facturas vencidas",
+    description="**Permisos requeridos: `administrador`**.<br>Ejecuta el proceso que busca facturas vencidas, les aplica el cargo por mora correspondiente y suspende el servicio si se excede el plazo configurado.",
+)
 def process_overdue_invoices(
     admin_user: dict = Depends(is_admin), db: Session = Depends(get_db)
 ):

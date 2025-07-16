@@ -57,7 +57,11 @@ def add_user(user_data: InputUser, db: Session = Depends(get_db)):
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-@user_router.post("/users/login")
+@user_router.post(
+    "/users/login",
+    summary="Iniciar sesión",
+    description="**Permisos requeridos: `Público`**.<br>Autentica a un usuario con su nombre de usuario y contraseña. Si las credenciales son correctas, devuelve un `access_token` en el cuerpo y un `refresh_token` en una cookie httpOnly.",
+)
 def login(user_credentials: InputLogin, db: Session = Depends(get_db)):
     """
     Autentica a un usuario y, si tiene éxito, devuelve un token de acceso

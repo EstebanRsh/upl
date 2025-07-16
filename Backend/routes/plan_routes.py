@@ -26,7 +26,11 @@ from auth.security import is_admin
 plan_router = APIRouter()
 
 
-@plan_router.post("/admin/plans/add")
+@plan_router.post(
+    "/admin/plans/add",
+    summary="Crear un nuevo plan de internet",
+    description="**Permisos requeridos: `administrador`**.<br>Crea un nuevo plan de internet en la base de datos con su nombre, velocidad y precio.",
+)
 def add_plan(
     plan_data: InputPlan,
     admin_user: dict = Depends(is_admin),
@@ -47,7 +51,12 @@ def add_plan(
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-@plan_router.get("/plans/all", response_model=PaginatedResponse[PlanOut])
+@plan_router.get(
+    "/plans/all",
+    response_model=PaginatedResponse[PlanOut],
+    summary="Obtener todos los planes de internet",
+    description="**Permisos requeridos: `administrador`**.<br>Obtiene una lista paginada de todos los planes de internet existentes en el sistema.",
+)
 def get_all_plans(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
@@ -76,7 +85,11 @@ def get_all_plans(
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-@plan_router.put("/admin/plans/update/{plan_id}")
+@plan_router.put(
+    "/admin/plans/update/{plan_id}",
+    summary="Actualizar un plan de internet",
+    description="**Permisos requeridos: `administrador`**.<br>Actualiza los datos (nombre, velocidad, precio) de un plan de internet existente.",
+)
 def update_plan(
     plan_id: int,
     plan_data: UpdatePlan,
@@ -111,7 +124,11 @@ def update_plan(
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-@plan_router.delete("/admin/plans/delete/{plan_id}")
+@plan_router.delete(
+    "/admin/plans/delete/{plan_id}",
+    summary="Eliminar un plan de internet",
+    description="**Permisos requeridos: `administrador`**.<br>Elimina un plan de internet de la base de datos, solo si no tiene suscripciones activas.",
+)
 def delete_plan(
     plan_id: int, admin_user: dict = Depends(is_admin), db: Session = Depends(get_db)
 ):

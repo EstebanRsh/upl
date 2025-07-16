@@ -20,7 +20,7 @@ from config.db import get_db
 subscription_router = APIRouter()
 
 
-@subscription_router.post("admin/subscriptions/assign")
+@subscription_router.post("/admin/subscriptions/assign")
 def assign_plan_to_user(
     sub_data: InputSubscription,
     admin_user: dict = Depends(is_admin),
@@ -33,7 +33,11 @@ def assign_plan_to_user(
         )
         db.add(new_subscription)
         db.commit()
-        return {"message": "Plan asignado al cliente exitosamente."}
+        # Esta es la línea clave: usamos JSONResponse para especificar el status_code
+        return JSONResponse(
+            status_code=status.HTTP_201_CREATED,
+            content={"message": "Plan asignado al cliente exitosamente."},
+        )
     except Exception as e:
         db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})

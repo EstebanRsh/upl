@@ -16,6 +16,7 @@ from models.models import (
     UpdatePlan,
     PaginatedResponse,
     PlanOut,
+    Subscription,
 )
 from sqlalchemy.orm import Session
 from config.db import get_db
@@ -25,7 +26,7 @@ from auth.security import is_admin
 plan_router = APIRouter()
 
 
-@plan_router.post("admin/plans/add")
+@plan_router.post("/admin/plans/add")
 def add_plan(
     plan_data: InputPlan,
     admin_user: dict = Depends(is_admin),
@@ -75,7 +76,7 @@ def get_all_plans(
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-@plan_router.put("admin/plans/update/{plan_id}")
+@plan_router.put("/admin/plans/update/{plan_id}")
 def update_plan(
     plan_id: int,
     plan_data: UpdatePlan,
@@ -110,12 +111,15 @@ def update_plan(
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-@plan_router.delete("admin/plans/delete/{plan_id}")
+@plan_router.delete("/admin/plans/delete/{plan_id}")
 def delete_plan(
     plan_id: int, admin_user: dict = Depends(is_admin), db: Session = Depends(get_db)
 ):
-    """Elimina un plan de internet de la base de datos."""
+    """
+    Elimina un plan de internet, solo si no tiene suscripciones activas.
+    """
     try:
+        # 1. Buscar el plan que se quiere eliminar
         plan_to_delete = (
             db.query(InternetPlan).filter(InternetPlan.id == plan_id).first()
         )
@@ -124,18 +128,25 @@ def delete_plan(
                 status_code=404, content={"message": "Plan no encontrado"}
             )
 
-        db.delete(plan_to_delete)
-        db.commit()
-        return {"message": f"Plan con ID {plan_id} eliminado exitosamente"}
-    except Exception as e:
-        db.rollback()
-        # Captura de error específico: si el plan tiene suscripciones asociadas,
-        # la base de datos lanzará un error de 'foreign key constraint'.
-        if "violates foreign key constraint" in str(e).lower():
+        # 2. VERIFICACIÓN EXPLÍCITA: Contar cuántas suscripciones usan este plan.
+        subscription_count = (
+            db.query(Subscription).filter(Subscription.plan_id == plan_id).count()
+        )
+
+        # 3. LÓGICA DE NEGOCIO: Si hay una o más suscripciones, denegar la eliminación.
+        if subscription_count > 0:
             return JSONResponse(
                 status_code=400,  # Bad Request
                 content={
-                    "message": "No se puede eliminar el plan porque tiene pagos asociados."
+                    "message": f"No se puede eliminar el plan porque {subscription_count} cliente(s) están suscritos a él."
                 },
             )
+
+        # 4. Si no hay suscripciones, proceder con la eliminación.
+        db.delete(plan_to_delete)
+        db.commit()
+        return {"message": f"Plan con ID {plan_id} eliminado exitosamente"}
+
+    except Exception as e:
+        db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})

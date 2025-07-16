@@ -146,3 +146,20 @@ def create_test_user(admin_auth_client):
         return response.json()
 
     return _create_user
+
+
+@pytest.fixture
+def create_test_plan(admin_auth_client):
+    """
+    Un factory fixture para crear planes de internet de prueba.
+    """
+
+    def _create_plan(name, speed, price):
+        response = admin_auth_client.post(
+            "/api/admin/plans/add",
+            json={"name": name, "speed_mbps": speed, "price": price},
+        )
+        assert response.status_code == 201
+        return response.json()
+
+    return _create_plan

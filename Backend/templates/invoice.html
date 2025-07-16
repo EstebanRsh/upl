@@ -2,71 +2,145 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <title>Factura {{ invoice_id }}</title>
-  <link rel="stylesheet" href="invoice.css" />
+  <title>Recibo de Pago {{ receipt_id }}</title>
+  <style>
+    @page {
+      size: letter landscape;
+      margin: 0;
+    }
+
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', 'Roboto', sans-serif;
+      background-color: #f4f6f8;
+      color: #333;
+    }
+
+    main {
+      padding: 2cm;
+      background-color: #fff;
+      box-sizing: border-box;
+      height: 100%;
+      border-left: 20px solid #3f51b5;
+      border-right: 20px solid #fdd835;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #eee;
+      padding-bottom: 1cm;
+    }
+
+    header img {
+      height: 2.5cm;
+    }
+
+    header .company-info {
+      text-align: right;
+    }
+
+    header h1 {
+      font-size: 28px;
+      color: #3f51b5;
+      margin: 0;
+      letter-spacing: 1px;
+    }
+
+    .company-info p {
+      font-size: 12px;
+      color: #666;
+      margin: 0.2cm 0;
+    }
+
+    section {
+      margin-top: 1cm;
+      display: flex;
+      gap: 1.5cm;
+    }
+
+    article {
+      flex: 1;
+      background-color: #fdd835;
+      padding: 1cm;
+      border-radius: 8px;
+      color: #222;
+    }
+
+    article h2 {
+      font-size: 14px;
+      margin-bottom: 8px;
+      color: #3f51b5;
+      text-transform: uppercase;
+    }
+
+    article p {
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+
+    aside {
+      margin: 2cm auto 1cm;
+      text-align: center;
+      font-size: 18px;
+      font-weight: bold;
+      color: #3f51b5;
+      border: 2px dashed #3f51b5;
+      padding: 10px 20px;
+      border-radius: 6px;
+      background-color: #e8eaf6;
+      width: fit-content;
+    }
+
+    footer {
+      text-align: center;
+      font-size: 10px;
+      color: #777;
+      border-top: 1px dashed #ccc;
+      padding-top: 0.5cm;
+    }
+  </style>
 </head>
 <body>
-  <div class="invoice-container">
-    <header class="header">
-      <img class="logo" src="{{ logo_path }}" alt="Logo Empresa" />
-      <div class="invoice-info-box">
-        <h1>FACTURA</h1>
-        <p>N° {{ invoice_id }}</p>
-        <p>Emisión: {{ issue_date }}</p>
-        <p>Vto: {{ due_date }}</p>
-        <p>Pago: {{ payment_date }}</p>
+  <main>
+    <header>
+      <img src="{{ logo_path }}" alt="Logo Empresa" />
+      <div class="company-info">
+        <h1>RECIBO DE PAGO</h1>
+        <p>Nº {{ receipt_id }} – Emitido el {{ issue_date }}</p>
+        <p>Mi Empresa ISP S.A.</p>
+        <p>CUIT: 30-12345678-9</p>
+        <p>Dirección Ficticia 123</p>
       </div>
     </header>
 
-    <section class="parties">
-      <div class="box">
-        <h2>FACTURADO A:</h2>
+    <section>
+      <article>
+        <h2>Cliente</h2>
         <p>{{ client_name }}</p>
         <p>DNI: {{ client_dni }}</p>
         <p>{{ client_address }}</p>
-      </div>
-      <div class="box">
-        <h2>FACTURADO POR:</h2>
-        <p>Mi Empresa ISP S.A.</p>
-        <p>CUIT: 30-12345678-9</p>
-        <p>Dirección Ficticia 123, Ciudad</p>
-      </div>
+      </article>
+      <article>
+        <h2>Pago</h2>
+        <p>Fecha de Pago: {{ payment_date }}</p>
+        <p>Monto Abonado: ${{ "%.2f"|format(amount_paid) }}</p>
+        <p>Forma de Pago: {{ payment_method }}</p>
+      </article>
     </section>
 
-    <table class="items">
-      <thead>
-        <tr>
-          <th>DESCRIPCIÓN</th><th>CANT.</th><th>PRECIO UNIT.</th><th>TOTAL</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>Plan “{{ plan_name }}”</td>
-          <td class="right">1</td>
-          <td class="right">${{ "%.2f"|format(base_amount) }}</td>
-          <td class="right">${{ "%.2f"|format(base_amount) }}</td>
-        </tr>
-        {% if late_fee > 0 %}
-        <tr>
-          <td>Cargo por mora</td>
-          <td class="right">1</td>
-          <td class="right">${{ "%.2f"|format(late_fee) }}</td>
-          <td class="right">${{ "%.2f"|format(late_fee) }}</td>
-        </tr>
-        {% endif %}
-      </tbody>
-    </table>
-
-    <div class="total-section">
-      <div class="total-box box">
-        <p>Total a Pagar: <strong>${{ "%.2f"|format(amount_paid) }}</strong></p>
-      </div>
-    </div>
+    <aside>
+      Total Pagado: ${{ "%.2f"|format(amount_paid) }}
+    </aside>
 
     <footer>
-      <p>Gracias por su pago y confianza.</p>
-      <p>Mi Empresa ISP S.A. | Contacto: (123) 456-7890 | info@miempresa.com</p>
+      Este recibo confirma la recepción del pago. Gracias por elegirnos.<br />
+      contacto@miempresa.com | Tel. (123) 456-7890
     </footer>
-  </div>
+  </main>
 </body>
 </html>

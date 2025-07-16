@@ -339,8 +339,3 @@ class Setting(BaseModel):
 # Esta línea instruye a SQLAlchemy para que cree en la base de datos todas las tablas
 # que heredan de `Base` y que aún no existan.
 Base.metadata.create_all(engine)
-# `sessionmaker` es una fábrica que produce objetos de Sesión.
-Session = sessionmaker(engine)
-# `session` es una instancia de una Sesión, que es el manejador de todas las
-# interacciones con la base de datos (consultas, inserciones, etc.).
-session = Session()

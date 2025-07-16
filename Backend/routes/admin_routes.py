@@ -9,10 +9,11 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
+from config.db import get_db
 import math
 from typing import Optional
 from models.models import (
-    session,
     User,
     UserDetail,
     Payment,
@@ -57,11 +58,12 @@ def get_all_users(
     # La dependencia 'is_admin' se ejecuta antes que esta función. Si el usuario no es admin,
     # la petición se detiene y se devuelve un error 403.
     admin_user: dict = Depends(is_admin),
+    db: Session = Depends(get_db),
 ):
     """Obtiene una lista paginada y filtrada de todos los usuarios del sistema."""
     try:
         # Consulta base que une las tablas de usuarios y detalles para poder filtrar por ambas.
-        query = session.query(User).join(User.userdetail)
+        query = db.query(User).join(User.userdetail)
 
         # Construcción dinámica de filtros basada en los parámetros de la query.
         filters = []
@@ -121,8 +123,8 @@ def get_all_users(
             current_page=page,
             items=items_list,
         )
-    finally:
-        session.close()
+    except Exception as e:
+        db.rollback()
 
 
 @admin_router.get(
@@ -132,16 +134,17 @@ def get_all_subscriptions(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     admin_user: dict = Depends(is_admin),
+    db: Session = Depends(get_db),
 ):
     """Obtiene una lista paginada de TODAS las suscripciones en el sistema."""
     try:
         offset = (page - 1) * size
-        total_items = session.query(Subscription).count()
+        total_items = db.query(Subscription).count()
 
         # Usamos 'joinedload' anidado para cargar eficientemente todos los datos relacionados
         # (Suscripción -> Usuario -> Detalles de Usuario y Suscripción -> Plan) en una sola consulta.
         subscriptions_query = (
-            session.query(Subscription)
+            db.query(Subscription)
             .options(
                 joinedload(Subscription.user).joinedload(User.userdetail),
                 joinedload(Subscription.plan),
@@ -185,8 +188,9 @@ def get_all_subscriptions(
             current_page=page,
             items=items_list,
         )
-    finally:
-        session.close()
+    except Exception as e:
+        db.rollback()
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @admin_router.get("/admin/payments/all", response_model=PaginatedResponse[PaymentOut])
@@ -194,12 +198,13 @@ def get_all_payments(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     admin_user: dict = Depends(is_admin),
+    db: Session = Depends(get_db),
 ):
     """Obtiene una lista paginada de TODOS los pagos en el sistema."""
     try:
         offset = (page - 1) * size
-        total_items = session.query(Payment).count()
-        payments_query = session.query(Payment).offset(offset).limit(size).all()
+        total_items = db.query(Payment).count()
+        payments_query = db.query(Payment).offset(offset).limit(size).all()
         total_pages = math.ceil(total_items / size)
 
         return PaginatedResponse(
@@ -208,17 +213,21 @@ def get_all_payments(
             current_page=page,
             items=payments_query,
         )
-    finally:
-        session.close()
+    except Exception as e:
+        db.rollback()
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @admin_router.put("/admin/users/{user_id}/details")
 def update_user_details(
-    user_id: int, user_data: UpdateUserDetail, admin_user: dict = Depends(is_admin)
+    user_id: int,
+    user_data: UpdateUserDetail,
+    admin_user: dict = Depends(is_admin),
+    db: Session = Depends(get_db),
 ):
     """Endpoint para que un administrador actualice los detalles de un cliente."""
     try:
-        user_to_update = session.query(User).filter(User.id == user_id).first()
+        user_to_update = db.query(User).filter(User.id == user_id).first()
         if not user_to_update or not user_to_update.userdetail:
             return JSONResponse(
                 status_code=404,
@@ -235,15 +244,13 @@ def update_user_details(
         if user_data.phone is not None:
             user_to_update.userdetail.phone = user_data.phone
 
-        session.commit()
+        db.commit()
         return {
             "message": f"Detalles del usuario con ID {user_id} actualizados exitosamente."
         }
     except Exception as e:
-        session.rollback()
+        db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})
-    finally:
-        session.close()
 
 
 @admin_router.put("/admin/subscriptions/{subscription_id}/status")
@@ -251,13 +258,12 @@ def update_subscription_status(
     subscription_id: int,
     sub_data: UpdateSubscriptionStatus,
     admin_user: dict = Depends(is_admin),
+    db: Session = Depends(get_db),
 ):
     """Endpoint para que un administrador actualice el estado de una suscripción."""
     try:
         subscription_to_update = (
-            session.query(Subscription)
-            .filter(Subscription.id == subscription_id)
-            .first()
+            db.query(Subscription).filter(Subscription.id == subscription_id).first()
         )
         if not subscription_to_update:
             return JSONResponse(
@@ -265,20 +271,21 @@ def update_subscription_status(
             )
 
         subscription_to_update.status = sub_data.status
-        session.commit()
+        db.commit()
         return {
             "message": f"Estado de la suscripción {subscription_id} actualizado a '{sub_data.status}'."
         }
     except Exception as e:
-        session.rollback()
+        db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})
-    finally:
-        session.close()
 
 
 @admin_router.put("/admin/users/{user_id}/role")
 def update_user_role(
-    user_id: int, role_data: UpdateUserRole, admin_user: dict = Depends(is_admin)
+    user_id: int,
+    role_data: UpdateUserRole,
+    admin_user: dict = Depends(is_admin),
+    db: Session = Depends(get_db),
 ):
     """Endpoint para que un administrador cambie el rol de otro usuario."""
     token_user_id = admin_user.get("user_id")
@@ -290,26 +297,26 @@ def update_user_role(
         )
 
     try:
-        user_to_update = session.query(User).filter(User.id == user_id).first()
+        user_to_update = db.query(User).filter(User.id == user_id).first()
         if not user_to_update:
             return JSONResponse(
                 status_code=404, content={"message": "Usuario no encontrado"}
             )
 
         user_to_update.role = role_data.role
-        session.commit()
+        db.commit()
         return {
             "message": f"Rol del usuario {user_id} actualizado a '{role_data.role}'."
         }
     except Exception as e:
-        session.rollback()
+        db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})
-    finally:
-        session.close()
 
 
 @admin_router.delete("/admin/users/{user_id}")
-def delete_user(user_id: int, admin_user: dict = Depends(is_admin)):
+def delete_user(
+    user_id: int, admin_user: dict = Depends(is_admin), db: Session = Depends(get_db)
+):
     """Endpoint para que un administrador elimine a un usuario y todos sus datos en cascada."""
     token_user_id = admin_user.get("user_id")
     # Regla de negocio: un administrador no puede eliminarse a sí mismo.
@@ -320,7 +327,7 @@ def delete_user(user_id: int, admin_user: dict = Depends(is_admin)):
         )
 
     try:
-        user_to_delete = session.query(User).filter(User.id == user_id).first()
+        user_to_delete = db.query(User).filter(User.id == user_id).first()
         if not user_to_delete:
             return JSONResponse(
                 status_code=404, content={"message": "Usuario no encontrado"}
@@ -328,13 +335,11 @@ def delete_user(user_id: int, admin_user: dict = Depends(is_admin)):
 
         # Gracias a la configuración 'cascade="all, delete-orphan"' en el modelo User,
         # al borrar el usuario se borrarán también sus detalles, pagos, suscripciones y facturas.
-        session.delete(user_to_delete)
-        session.commit()
+        db.delete(user_to_delete)
+        db.commit()
         return {
             "message": f"Usuario con ID {user_id} y todos sus datos han sido eliminados."
         }
     except Exception as e:
-        session.rollback()
+        db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})
-    finally:
-        session.close()

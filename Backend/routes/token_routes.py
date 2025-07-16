@@ -9,16 +9,20 @@
 # -----------------------------------------------------------------------------
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.responses import JSONResponse
-from models.models import session, User
+from sqlalchemy.orm import Session
+from models.models import User
 from auth.security import Security
 import jwt
+from config.db import get_db
 
 # Creación de un router específico para la ruta de token.
 token_router = APIRouter()
 
 
 @token_router.post("/token/refresh")
-def refresh_access_token(request: Request, response: Response):
+def refresh_access_token(
+    request: Request, response: Response, db: Session = Depends(get_db)
+):
     """
     Refresca el token de acceso usando el 'refresh_token' almacenado en una cookie.
     Implementa la rotación de refresh tokens para mayor seguridad.
@@ -37,7 +41,7 @@ def refresh_access_token(request: Request, response: Response):
             refresh_token_from_cookie, Security.secret, algorithms=["HS256"]
         )
         username = payload.get("sub")
-        user = session.query(User).filter(User.username == username).first()
+        user = db.query(User).filter(User.username == username).first()
 
         # 2. Medida de seguridad CRÍTICA: se valida que el token de la cookie
         #    coincida con el último refresh token guardado en la base de datos para ese usuario.
@@ -46,7 +50,7 @@ def refresh_access_token(request: Request, response: Response):
             # en la base de datos para prevenir su uso futuro.
             if user:
                 user.refresh_token = None
-                session.commit()
+                db.commit()
             raise HTTPException(
                 status_code=401, detail="Refresh token inválido o revocado"
             )
@@ -58,7 +62,7 @@ def refresh_access_token(request: Request, response: Response):
 
         # 4. Se guarda el NUEVO refresh token en la base de datos, reemplazando el antiguo.
         user.refresh_token = new_refresh_token
-        session.commit()
+        db.commit()
 
         # 5. Se devuelve el nuevo token de acceso en el cuerpo de la respuesta y
         #    el nuevo refresh token se establece en una nueva cookie 'httpOnly'.
@@ -76,5 +80,3 @@ def refresh_access_token(request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Refresh token ha expirado")
     except (jwt.InvalidTokenError, Exception) as e:
         raise HTTPException(status_code=401, detail=f"Refresh token inválido: {e}")
-    finally:
-        session.close()

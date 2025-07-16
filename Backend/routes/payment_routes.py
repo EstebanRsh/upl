@@ -10,8 +10,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 import math
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
 from models.models import (
-    session,
     Payment,
     InputPayment,
     User,
@@ -21,13 +21,18 @@ from models.models import (
 )
 from auth.security import get_current_user, is_admin
 from utils.pdf_generator import create_invoice_pdf
+from config.db import get_db
 
 # Creación de un router específico para las rutas de pagos.
 payment_router = APIRouter()
 
 
 @payment_router.post("/payments/add")
-def add_payment(payment_data: InputPayment, admin_user: dict = Depends(is_admin)):
+def add_payment(
+    payment_data: InputPayment,
+    admin_user: dict = Depends(is_admin),
+    db: Session = Depends(get_db),
+):
     """
     Registra un pago para un usuario.
     AÑADIDA LA VALIDACIÓN DEL MONTO DEL PAGO.
@@ -35,7 +40,7 @@ def add_payment(payment_data: InputPayment, admin_user: dict = Depends(is_admin)
     try:
         # 1. Busca la factura pendiente más antigua del usuario.
         invoice_to_pay = (
-            session.query(Invoice)
+            db.query(Invoice)
             .filter(
                 Invoice.user_id == payment_data.user_id, Invoice.status == "pending"
             )
@@ -68,8 +73,8 @@ def add_payment(payment_data: InputPayment, admin_user: dict = Depends(is_admin)
             amount=payment_data.amount,
             invoice_id=invoice_to_pay.id,  # Asocia el pago a la factura encontrada.
         )
-        session.add(new_payment)
-        session.flush()  # 'flush' envía los cambios a la BD sin hacer commit, útil para obtener el ID del nuevo pago.
+        db.add(new_payment)
+        db.flush()  # 'flush' envía los cambios a la BD sin hacer commit, útil para obtener el ID del nuevo pago.
 
         # 3. Actualiza el estado de la factura a 'paid'.
         invoice_to_pay.status = "paid"
@@ -92,7 +97,7 @@ def add_payment(payment_data: InputPayment, admin_user: dict = Depends(is_admin)
         # 5. Guarda la ruta relativa del PDF generado en el registro de la factura.
         invoice_to_pay.receipt_pdf_url = pdf_path
 
-        session.commit()
+        db.commit()
         return JSONResponse(
             status_code=201,
             content={
@@ -101,10 +106,8 @@ def add_payment(payment_data: InputPayment, admin_user: dict = Depends(is_admin)
             },
         )
     except Exception as e:
-        session.rollback()
+        db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})
-    finally:
-        session.close()
 
 
 @payment_router.get(
@@ -115,6 +118,7 @@ def get_user_payments(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
     current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Obtiene el historial de pagos de un usuario de forma paginada.
@@ -135,14 +139,14 @@ def get_user_payments(
         offset = (page - 1) * size
 
         # Se cuenta y se consulta solo los pagos del usuario especificado.
-        total_items = session.query(Payment).filter(Payment.user_id == user_id).count()
+        total_items = db.query(Payment).filter(Payment.user_id == user_id).count()
         if total_items == 0:
             return PaginatedResponse(
                 total_items=0, total_pages=0, current_page=1, items=[]
             )
 
         payments_query = (
-            session.query(Payment)
+            db.query(Payment)
             .filter(Payment.user_id == user_id)
             .offset(offset)
             .limit(size)
@@ -156,5 +160,6 @@ def get_user_payments(
             current_page=page,
             items=payments_query,
         )
-    finally:
-        session.close()
+    except Exception as e:
+        db.rollback()
+        return JSONResponse(status_code=500, content={"error": str(e)})

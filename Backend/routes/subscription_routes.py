@@ -9,10 +9,12 @@
 # -----------------------------------------------------------------------------
 from fastapi import APIRouter, Request, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
-from models.models import session, Subscription, InputSubscription, User
+from sqlalchemy.orm import Session
+from models.models import Subscription, InputSubscription, User
 from auth.security import Security
 from sqlalchemy.orm import joinedload
 from auth.security import is_admin, get_current_user
+from config.db import get_db
 
 # Creación de un router específico para las rutas de suscripciones.
 subscription_router = APIRouter()
@@ -20,26 +22,28 @@ subscription_router = APIRouter()
 
 @subscription_router.post("admin/subscriptions/assign")
 def assign_plan_to_user(
-    sub_data: InputSubscription, admin_user: dict = Depends(is_admin)
+    sub_data: InputSubscription,
+    admin_user: dict = Depends(is_admin),
+    db: Session = Depends(get_db),
 ):
     """Endpoint para que un administrador asigne un plan a un cliente."""
     try:
         new_subscription = Subscription(
             user_id=sub_data.user_id, plan_id=sub_data.plan_id
         )
-        session.add(new_subscription)
-        session.commit()
+        db.add(new_subscription)
+        db.commit()
         return {"message": "Plan asignado al cliente exitosamente."}
     except Exception as e:
-        session.rollback()
+        db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})
-    finally:
-        session.close()
 
 
 @subscription_router.get("/users/{user_id}/subscriptions")
 def get_user_subscriptions(
-    user_id: int, current_user: dict = Depends(get_current_user)
+    user_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Obtiene las suscripciones de un usuario, incluyendo detalles del plan.
@@ -58,7 +62,7 @@ def get_user_subscriptions(
         # 'joinedload' se usa para cargar eficientemente las suscripciones y los planes
         # asociados en una sola consulta, evitando el problema de N+1 queries.
         user = (
-            session.query(User)
+            db.query(User)
             .filter(User.id == user_id)
             .options(joinedload(User.subscriptions).joinedload(Subscription.plan))
             .first()
@@ -84,5 +88,5 @@ def get_user_subscriptions(
             for sub in user.subscriptions
         ]
         return subscriptions_list
-    finally:
-        session.close()
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})

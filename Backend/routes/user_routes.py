@@ -6,18 +6,21 @@
 # 1. Registrar un nuevo usuario (cliente) en el sistema.
 # 2. Iniciar sesión (login), que autentica al usuario y le devuelve los tokens.
 # -----------------------------------------------------------------------------
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 from fastapi.responses import JSONResponse
-from models.models import session, User, UserDetail, InputUser, InputLogin
+from sqlalchemy.orm import Session
+from models.models import User, UserDetail, InputUser, InputLogin
 from auth.security import Security
 from sqlalchemy.orm import joinedload
+from config.db import get_db
 
 # Creación de un router específico para las rutas de usuarios.
 user_router = APIRouter()
 
 
 @user_router.post("admin/users/add")
-def add_user(user_data: InputUser):
+def add_user(user_data: InputUser, db: Session = Depends(get_db)):
     """
     Registra un nuevo usuario (cliente) y sus detalles personales en la base de datos.
     """
@@ -44,20 +47,18 @@ def add_user(user_data: InputUser):
         # Se vinculan los dos objetos a través de la relación de SQLAlchemy.
         new_user.userdetail = new_user_detail
 
-        session.add(new_user)
-        session.commit()
+        db.add(new_user)
+        db.commit()
         return JSONResponse(
             status_code=201, content={"message": "Cliente agregado exitosamente"}
         )
     except Exception as e:
-        session.rollback()
+        db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})
-    finally:
-        session.close()
 
 
 @user_router.post("/users/login")
-def login(user_credentials: InputLogin):
+def login(user_credentials: InputLogin, db: Session = Depends(get_db)):
     """
     Autentica a un usuario y, si tiene éxito, devuelve un token de acceso
     y establece un token de actualización en una cookie segura.
@@ -65,9 +66,7 @@ def login(user_credentials: InputLogin):
     try:
         # Busca al usuario por su nombre de usuario en la base de datos.
         user_in_db = (
-            session.query(User)
-            .filter(User.username == user_credentials.username)
-            .first()
+            db.query(User).filter(User.username == user_credentials.username).first()
         )
 
         # Verifica si el usuario existe Y si la contraseña proporcionada es correcta.
@@ -88,7 +87,7 @@ def login(user_credentials: InputLogin):
 
         # Se guarda el nuevo refresh token en la base de datos para la rotación de tokens.
         user_in_db.refresh_token = refresh_token
-        session.commit()
+        db.commit()
 
         # Se construye la respuesta.
         response_body = {
@@ -111,5 +110,3 @@ def login(user_credentials: InputLogin):
             status_code=500,
             content={"success": False, "message": f"Error interno del servidor: {e}"},
         )
-    finally:
-        session.close()

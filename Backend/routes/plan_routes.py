@@ -9,14 +9,16 @@
 from fastapi import APIRouter, Depends, Query
 import math
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
 from models.models import (
-    session,
     InternetPlan,
     InputPlan,
     UpdatePlan,
     PaginatedResponse,
     PlanOut,
 )
+from sqlalchemy.orm import Session
+from config.db import get_db
 from auth.security import is_admin
 
 # Creación de un router específico para las rutas de planes.
@@ -24,22 +26,24 @@ plan_router = APIRouter()
 
 
 @plan_router.post("admin/plans/add")
-def add_plan(plan_data: InputPlan, admin_user: dict = Depends(is_admin)):
+def add_plan(
+    plan_data: InputPlan,
+    admin_user: dict = Depends(is_admin),
+    db: Session = Depends(get_db),
+):
     """Crea un nuevo plan de internet en la base de datos."""
     try:
         new_plan = InternetPlan(
             name=plan_data.name, speed_mbps=plan_data.speed_mbps, price=plan_data.price
         )
-        session.add(new_plan)
-        session.commit()
+        db.add(new_plan)
+        db.commit()
         return JSONResponse(
             status_code=201, content={"message": f"Plan '{plan_data.name}' agregado."}
         )
     except Exception as e:
-        session.rollback()
+        db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})
-    finally:
-        session.close()
 
 
 @plan_router.get("/plans/all", response_model=PaginatedResponse[PlanOut])
@@ -47,17 +51,18 @@ def get_all_plans(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
     admin_user: dict = Depends(is_admin),
+    db: Session = Depends(get_db),
 ):
     """Obtiene una lista paginada de todos los planes de internet existentes."""
     try:
         offset = (page - 1) * size
-        total_items = session.query(InternetPlan).count()
+        total_items = db.query(InternetPlan).count()
         if total_items == 0:
             return PaginatedResponse(
                 total_items=0, total_pages=0, current_page=1, items=[]
             )
 
-        plans_query = session.query(InternetPlan).offset(offset).limit(size).all()
+        plans_query = db.query(InternetPlan).offset(offset).limit(size).all()
         total_pages = math.ceil(total_items / size)
 
         return PaginatedResponse(
@@ -66,18 +71,21 @@ def get_all_plans(
             current_page=page,
             items=plans_query,
         )
-    finally:
-        session.close()
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @plan_router.put("admin/plans/update/{plan_id}")
 def update_plan(
-    plan_id: int, plan_data: UpdatePlan, admin_user: dict = Depends(is_admin)
+    plan_id: int,
+    plan_data: UpdatePlan,
+    admin_user: dict = Depends(is_admin),
+    db: Session = Depends(get_db),
 ):
     """Actualiza los datos de un plan de internet existente."""
     try:
         plan_to_update = (
-            session.query(InternetPlan).filter(InternetPlan.id == plan_id).first()
+            db.query(InternetPlan).filter(InternetPlan.id == plan_id).first()
         )
         if not plan_to_update:
             return JSONResponse(
@@ -92,35 +100,35 @@ def update_plan(
         if plan_data.price is not None:
             plan_to_update.price = plan_data.price
 
-        session.commit()
-        session.refresh(
+        db.commit()
+        db.refresh(
             plan_to_update
         )  # Refresca el objeto para devolver los datos actualizados.
         return {"message": "Plan actualizado exitosamente", "plan": plan_to_update}
     except Exception as e:
-        session.rollback()
+        db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})
-    finally:
-        session.close()
 
 
 @plan_router.delete("admin/plans/delete/{plan_id}")
-def delete_plan(plan_id: int, admin_user: dict = Depends(is_admin)):
+def delete_plan(
+    plan_id: int, admin_user: dict = Depends(is_admin), db: Session = Depends(get_db)
+):
     """Elimina un plan de internet de la base de datos."""
     try:
         plan_to_delete = (
-            session.query(InternetPlan).filter(InternetPlan.id == plan_id).first()
+            db.query(InternetPlan).filter(InternetPlan.id == plan_id).first()
         )
         if not plan_to_delete:
             return JSONResponse(
                 status_code=404, content={"message": "Plan no encontrado"}
             )
 
-        session.delete(plan_to_delete)
-        session.commit()
+        db.delete(plan_to_delete)
+        db.commit()
         return {"message": f"Plan con ID {plan_id} eliminado exitosamente"}
     except Exception as e:
-        session.rollback()
+        db.rollback()
         # Captura de error específico: si el plan tiene suscripciones asociadas,
         # la base de datos lanzará un error de 'foreign key constraint'.
         if "violates foreign key constraint" in str(e).lower():
@@ -131,5 +139,3 @@ def delete_plan(plan_id: int, admin_user: dict = Depends(is_admin)):
                 },
             )
         return JSONResponse(status_code=500, content={"error": str(e)})
-    finally:
-        session.close()

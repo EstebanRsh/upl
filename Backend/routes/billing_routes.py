@@ -9,8 +9,8 @@
 # -----------------------------------------------------------------------------
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse, FileResponse
+from sqlalchemy.orm import Session
 from models.models import (
-    session,
     BusinessSettings,
     Setting,
     Subscription,
@@ -21,13 +21,18 @@ from auth.security import is_admin, get_current_user
 import datetime
 import os
 from sqlalchemy import extract
+from config.db import get_db
 
 # Creación de un router específico para las rutas de facturación.
 billing_router = APIRouter()
 
 
 @billing_router.post("/admin/settings/set")
-def set_business_setting(setting_data: Setting, admin_user: dict = Depends(is_admin)):
+def set_business_setting(
+    setting_data: Setting,
+    admin_user: dict = Depends(is_admin),
+    db: Session = Depends(get_db),
+):
     """
     Crea o actualiza una regla de negocio en la base de datos.
     Permite cambiar parámetros del sistema sin necesidad de modificar el código.
@@ -35,7 +40,7 @@ def set_business_setting(setting_data: Setting, admin_user: dict = Depends(is_ad
     try:
         # Busca si la configuración (ej. 'payment_window_days') ya existe.
         setting = (
-            session.query(BusinessSettings)
+            db.query(BusinessSettings)
             .filter(BusinessSettings.setting_name == setting_data.setting_name)
             .first()
         )
@@ -51,21 +56,21 @@ def set_business_setting(setting_data: Setting, admin_user: dict = Depends(is_ad
                 setting_value=setting_data.setting_value,
                 description=setting_data.description,
             )
-            session.add(setting)
+            db.add(setting)
 
-        session.commit()
+        db.commit()
         return {
             "message": f"Configuración '{setting_data.setting_name}' guardada exitosamente."
         }
     except Exception as e:
-        session.rollback()
+        db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})
-    finally:
-        session.close()
 
 
 @billing_router.post("/admin/invoices/generate-monthly")
-def generate_monthly_invoices(admin_user: dict = Depends(is_admin)):
+def generate_monthly_invoices(
+    admin_user: dict = Depends(is_admin), db: Session = Depends(get_db)
+):
     """
     Genera las facturas mensuales para todas las suscripciones activas.
     AÑADIDA LA LÓGICA PARA EVITAR DUPLICADOS.
@@ -73,7 +78,7 @@ def generate_monthly_invoices(admin_user: dict = Depends(is_admin)):
     try:
         # 1. Obtiene la regla de negocio para la fecha de vencimiento.
         payment_window_setting = (
-            session.query(BusinessSettings)
+            db.query(BusinessSettings)
             .filter(BusinessSettings.setting_name == "payment_window_days")
             .first()
         )
@@ -86,7 +91,7 @@ def generate_monthly_invoices(admin_user: dict = Depends(is_admin)):
 
         # 2. Busca todas las suscripciones que estén 'activas'.
         active_subscriptions = (
-            session.query(Subscription).filter(Subscription.status == "active").all()
+            db.query(Subscription).filter(Subscription.status == "active").all()
         )
 
         generated_count = 0
@@ -97,7 +102,7 @@ def generate_monthly_invoices(admin_user: dict = Depends(is_admin)):
             # --- VERIFICACIÓN ANTI-DUPLICADOS ---
             # Revisa si ya existe una factura para esta suscripción en el mes y año actual.
             existing_invoice = (
-                session.query(Invoice)
+                db.query(Invoice)
                 .filter(
                     Invoice.subscription_id == sub.id,
                     extract("year", Invoice.issue_date) == today.year,
@@ -121,32 +126,32 @@ def generate_monthly_invoices(admin_user: dict = Depends(is_admin)):
                 base_amount=sub.plan.price,
                 total_amount=sub.plan.price,
             )
-            session.add(new_invoice)
+            db.add(new_invoice)
             generated_count += 1
 
-        session.commit()
+        db.commit()
         return {
             "message": "Proceso completado.",
             "facturas_generadas": generated_count,
             "facturas_omitidas_por_duplicado": skipped_count,
         }
     except Exception as e:
-        session.rollback()
+        db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})
-    finally:
-        session.close()
 
 
 @billing_router.get("/invoices/{invoice_id}/download")
 def download_invoice_pdf(
-    invoice_id: int, current_user: dict = Depends(get_current_user)
+    invoice_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """
     Permite a un administrador o al dueño de la factura descargar el PDF del recibo.
     """
     try:
         # 1. Busca la factura en la base de datos.
-        invoice = session.query(Invoice).filter(Invoice.id == invoice_id).first()
+        invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
         if not invoice:
             raise HTTPException(status_code=404, detail="Factura no encontrada")
 
@@ -182,24 +187,22 @@ def download_invoice_pdf(
         )
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
-    finally:
-        session.close()
 
 
 @billing_router.post("/admin/invoices/process-overdue")
-def process_overdue_invoices(admin_user: dict = Depends(is_admin)):
+def process_overdue_invoices(
+    admin_user: dict = Depends(is_admin), db: Session = Depends(get_db)
+):
     """
     Busca facturas vencidas, aplica cargos por mora y suspende servicios si es necesario.
     """
     try:
         # 1. Obtiene las reglas de negocio para cargos por mora y días para suspensión.
         late_fee_setting = (
-            session.query(BusinessSettings)
-            .filter_by(setting_name="late_fee_amount")
-            .first()
+            db.query(BusinessSettings).filter_by(setting_name="late_fee_amount").first()
         )
         suspension_days_setting = (
-            session.query(BusinessSettings)
+            db.query(BusinessSettings)
             .filter_by(setting_name="days_for_suspension")
             .first()
         )
@@ -216,7 +219,7 @@ def process_overdue_invoices(admin_user: dict = Depends(is_admin)):
 
         # 2. Busca facturas pendientes y vencidas
         overdue_invoices = (
-            session.query(Invoice)
+            db.query(Invoice)
             .filter(Invoice.status == "pending", Invoice.due_date < today)
             .all()
         )
@@ -233,19 +236,17 @@ def process_overdue_invoices(admin_user: dict = Depends(is_admin)):
             # 4. Verifica si se debe suspender el servicio
             days_overdue = (today - invoice.due_date.date()).days
             if days_overdue >= days_for_suspension:
-                subscription = session.query(Subscription).get(invoice.subscription_id)
+                subscription = db.query(Subscription).get(invoice.subscription_id)
                 if subscription and subscription.status == "active":
                     subscription.status = "suspended"
                     suspended_count += 1
 
-        session.commit()
+        db.commit()
         return {
             "message": "Proceso de facturas vencidas completado.",
             "facturas_con_recargo": processed_count,
             "servicios_suspendidos": suspended_count,
         }
     except Exception as e:
-        session.rollback()
+        db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})
-    finally:
-        session.close()

@@ -10,7 +10,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 import math
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from models.models import (
     Payment,
     InputPayment,
@@ -127,8 +127,6 @@ def get_user_payments(
     token_user_id = current_user.get("user_id")
     token_user_role = current_user.get("role")
 
-    # Lógica de autorización: permite el acceso si el rol es 'administrador' O
-    # si el ID del usuario del token coincide con el ID solicitado en la URL.
     if token_user_role != "administrador" and token_user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -138,27 +136,51 @@ def get_user_payments(
     try:
         offset = (page - 1) * size
 
-        # Se cuenta y se consulta solo los pagos del usuario especificado.
-        total_items = db.query(Payment).filter(Payment.user_id == user_id).count()
+        # 1. Hacemos un JOIN para poder acceder a los datos relacionados
+        payments_query = (
+            db.query(Payment)
+            .join(Payment.invoice)
+            .join(Invoice.subscription)
+            .filter(Payment.user_id == user_id)
+        )
+
+        total_items = payments_query.count()
         if total_items == 0:
             return PaginatedResponse(
                 total_items=0, total_pages=0, current_page=1, items=[]
             )
 
-        payments_query = (
-            db.query(Payment)
-            .filter(Payment.user_id == user_id)
+        # 2. Usamos joinedload para cargar eficientemente los datos relacionados
+        payments = (
+            payments_query.options(
+                joinedload(Payment.invoice).joinedload(Invoice.subscription)
+            )
             .offset(offset)
             .limit(size)
             .all()
         )
+
         total_pages = math.ceil(total_items / size)
+
+        # 3. Construimos la lista de respuesta manualmente para que coincida con PaymentOut
+        items_list = [
+            PaymentOut(
+                id=p.id,
+                # Obtenemos el plan_id a través de la relación
+                plan_id=p.invoice.subscription.plan_id,
+                user_id=p.user_id,
+                amount=p.amount,
+                payment_date=p.payment_date,
+            )
+            for p in payments
+            if p.invoice and p.invoice.subscription
+        ]
 
         return PaginatedResponse(
             total_items=total_items,
             total_pages=total_pages,
             current_page=page,
-            items=payments_query,
+            items=items_list,  # Devolvemos la lista que construimos
         )
     except Exception as e:
         db.rollback()

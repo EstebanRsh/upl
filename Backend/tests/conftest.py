@@ -73,7 +73,8 @@ def db_session(client):  # Depende de 'client' para asegurar que las tablas ya e
 
     # Al final del test, se cierra la sesión y se revierte la transacción
     db.close()
-    transaction.rollback()
+    if transaction.is_active:
+        transaction.rollback()
     connection.close()
     # Se limpia el override
     del app.dependency_overrides[get_db]

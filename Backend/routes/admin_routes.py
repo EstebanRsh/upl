@@ -25,6 +25,7 @@ from models.models import (
 )
 from sqlalchemy.orm import joinedload
 from auth.security import is_admin, Security
+from sqlalchemy.exc import IntegrityError
 
 admin_router = APIRouter()
 
@@ -53,6 +54,12 @@ def add_user(user_data: InputUser, db: Session = Depends(get_db)):
         db.add(new_user)
         db.commit()
         return {"message": "Cliente agregado exitosamente"}
+    except IntegrityError:
+        db.rollback()  # Es importante revertir la transacción fallida
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"El usuario '{user_data.username}' o el email '{user_data.email}' ya existen.",
+        )
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))

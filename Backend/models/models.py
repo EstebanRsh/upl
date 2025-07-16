@@ -250,7 +250,11 @@ class UpdatePlan(BaseModel):
 
     name: str | None = None
     speed_mbps: int | None = None
-    price: float | None = None
+    price: float | None = Field(
+        default=None,
+        gt=0,
+        description="El nuevo precio mensual del plan. Debe ser mayor que cero.",
+    )
 
 
 class UpdateUserDetail(BaseModel):

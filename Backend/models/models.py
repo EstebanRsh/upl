@@ -15,7 +15,7 @@
 from config.db import engine, Base
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float
 from sqlalchemy.orm import sessionmaker, relationship
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 import datetime
 from typing import List, TypeVar, Generic
 
@@ -214,9 +214,15 @@ class InputLogin(BaseModel):
 class InputPlan(BaseModel):
     """Schema para los datos de entrada al crear un plan."""
 
-    name: str
-    speed_mbps: int
-    price: float
+    name: str = Field(
+        ..., description="El nombre comercial del plan. Ej: 'Fibra Óptica 100 Mega'"
+    )
+    speed_mbps: int = Field(
+        ..., description="La velocidad de descarga del plan en Megabits por segundo."
+    )
+    price: float = Field(
+        ..., gt=0, description="El precio mensual del plan. Debe ser mayor que cero."
+    )
 
 
 class InputPayment(BaseModel):

@@ -23,10 +23,51 @@ from routes.billing_routes import billing_router
 # Crear las tablas en la base de datos
 # Base.metadata.create_all(bind=engine)
 
+# Metadatos para las "etiquetas" (tags). Mejora la documentación.
+tags_metadata = [
+    {
+        "name": "Usuarios",
+        "description": "Endpoints para el registro y login de usuarios.",
+    },
+    {
+        "name": "Administración",
+        "description": "Operaciones administrativas sobre usuarios, planes y suscripciones. **Requiere permisos de administrador**.",
+    },
+    {
+        "name": "Planes de Internet",
+        "description": "Consulta pública de los planes de internet disponibles.",
+    },
+    {
+        "name": "Pagos",
+        "description": "Endpoints para procesar pagos y consultar historiales.",
+    },
+    {
+        "name": "Suscripciones",
+        "description": "Consulta de las suscripciones de un usuario.",
+    },
+    {
+        "name": "Facturación",
+        "description": "Operaciones de alto nivel como la generación masiva de facturas y el procesamiento de pagos vencidos.",
+    },
+    {
+        "name": "Token",
+        "description": "Endpoint para la renovación de tokens de acceso (refresh token).",
+    },
+]
 app = FastAPI(
-    title="API para ISP",
-    description="Backend para la gestión de clientes y pagos de un proveedor de internet.",
-    version="1.0.0",
+    title="API de Gestión para ISP",
+    description="""
+API para la gestión de clientes, planes, suscripciones y facturación de un Proveedor de Servicios de Internet (ISP). 🚀
+
+**Esta API permite:**
+* Gestionar clientes (CRUD).
+* Definir y administrar planes de internet.
+* Manejar suscripciones de clientes a planes.
+* Procesar pagos y generar recibos en PDF.
+* Automatizar la facturación mensual y el manejo de moras.
+    """,
+    version="1.1.0",
+    openapi_tags=tags_metadata,
 )
 
 origins = [

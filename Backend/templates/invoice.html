@@ -1,146 +1,308 @@
 <!DOCTYPE html>
 <html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <title>Recibo de Pago {{ receipt_id }}</title>
-  <style>
-    @page {
-      size: letter landscape;
-      margin: 0;
-    }
+  <head>
+    <meta charset="UTF-8" />
+    <title>Recibo {{ receipt_number }}</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 0;
+      }
+      body {
+        font-family: "Arial", sans-serif;
+        font-size: 12px;
+        color: #333;
+        margin: 0;
+        line-height: 1.4;
+        background: white;
+      }
+      .receipt-wrapper {
+        width: 21cm;
+        height: 14.85cm;
+        padding: 2cm;
+        box-sizing: border-box;
+        border-bottom: 2px dashed #ccc;
+        position: relative;
+      }
 
-    body {
-      margin: 0;
-      font-family: 'Segoe UI', 'Roboto', sans-serif;
-      background-color: #f4f6f8;
-      color: #333;
-    }
+      /* Header con logo y título */
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 2cm;
+        padding-bottom: 1cm;
+        border-bottom: 2px solid #333;
+      }
 
-    main {
-      padding: 2cm;
-      background-color: #fff;
-      box-sizing: border-box;
-      height: 100%;
-      border-left: 20px solid #3f51b5;
-      border-right: 20px solid #fdd835;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-    }
+      .company-section {
+        flex: 1;
+        display: flex;
+        align-items: flex-start;
+        gap: 15px;
+      }
 
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      border-bottom: 2px solid #eee;
-      padding-bottom: 1cm;
-    }
+      .company-logo {
+        flex-shrink: 0;
+      }
 
-    header img {
-      height: 2.5cm;
-    }
+      .company-details {
+        flex: 1;
+      }
 
-    header .company-info {
-      text-align: right;
-    }
+      .company-info {
+        line-height: 1.5;
+      }
 
-    header h1 {
-      font-size: 28px;
-      color: #3f51b5;
-      margin: 0;
-      letter-spacing: 1px;
-    }
+      .company-info .company-name {
+        font-size: 18px;
+        font-weight: bold;
+        color: #333;
+        margin-bottom: 5px;
+      }
 
-    .company-info p {
-      font-size: 12px;
-      color: #666;
-      margin: 0.2cm 0;
-    }
+      .company-info p {
+        margin: 3px 0;
+        font-size: 11px;
+        color: #666;
+      }
 
-    section {
-      margin-top: 1cm;
-      display: flex;
-      gap: 1.5cm;
-    }
+      .logo {
+        width: 100px;
+        height: auto;
+        margin-bottom: 15px;
+        margin-right: 20px;
+      }
 
-    article {
-      flex: 1;
-      background-color: #fdd835;
-      padding: 1cm;
-      border-radius: 8px;
-      color: #222;
-    }
+      .receipt-title {
+        font-size: 24px;
+        font-weight: bold;
+        color: #333;
+        text-align: right;
+        margin-top: 20px;
+      }
 
-    article h2 {
-      font-size: 14px;
-      margin-bottom: 8px;
-      color: #3f51b5;
-      text-transform: uppercase;
-    }
+      /* Sección de detalles cliente y recibo */
+      .details-section {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 2cm;
+      }
 
-    article p {
-      font-size: 11px;
-      margin-bottom: 4px;
-    }
+      .client-info {
+        flex: 1;
+        margin-right: 3cm;
+      }
 
-    aside {
-      margin: 2cm auto 1cm;
-      text-align: center;
-      font-size: 18px;
-      font-weight: bold;
-      color: #3f51b5;
-      border: 2px dashed #3f51b5;
-      padding: 10px 20px;
-      border-radius: 6px;
-      background-color: #e8eaf6;
-      width: fit-content;
-    }
+      .client-info h2 {
+        font-size: 12px;
+        font-weight: bold;
+        color: #333;
+        margin: 0 0 10px 0;
+        text-transform: uppercase;
+      }
 
-    footer {
-      text-align: center;
-      font-size: 10px;
-      color: #777;
-      border-top: 1px dashed #ccc;
-      padding-top: 0.5cm;
-    }
-  </style>
-</head>
-<body>
-  <main>
-    <header>
-      <img src="{{ logo_path }}" alt="Logo Empresa" />
-      <div class="company-info">
-        <h1>RECIBO DE PAGO</h1>
-        <p>Nº {{ receipt_id }} – Emitido el {{ issue_date }}</p>
-        <p>Mi Empresa ISP S.A.</p>
-        <p>CUIT: 30-12345678-9</p>
-        <p>Dirección Ficticia 123</p>
+      .client-info p {
+        margin: 4px 0;
+        font-size: 11px;
+        line-height: 1.4;
+      }
+
+      .receipt-info {
+        text-align: right;
+        min-width: 200px;
+      }
+
+      .receipt-info p {
+        margin: 4px 0;
+        font-size: 11px;
+      }
+
+      .receipt-info strong {
+        color: #333;
+      }
+
+      /* Tabla de items */
+      .items-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1.5cm;
+      }
+
+      .items-table th {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        padding: 12px 8px;
+        text-align: left;
+        font-size: 11px;
+        font-weight: bold;
+        text-transform: uppercase;
+        color: #495057;
+      }
+
+      .items-table td {
+        border: 1px solid #dee2e6;
+        padding: 12px 8px;
+        font-size: 11px;
+      }
+
+      .items-table .text-right {
+        text-align: right;
+      }
+
+      .items-table .text-center {
+        text-align: center;
+      }
+
+      /* Sección de totales */
+      .totals-section {
+        margin-top: 1cm;
+        display: flex;
+        justify-content: flex-end;
+      }
+
+      .totals-table {
+        width: 300px;
+        border-collapse: collapse;
+      }
+
+      .totals-table td {
+        padding: 8px;
+        font-size: 11px;
+        border-bottom: 1px solid #eee;
+      }
+
+      .totals-table .total-row {
+        font-weight: bold;
+        font-size: 14px;
+        border-top: 2px solid #333;
+        border-bottom: 2px solid #333;
+      }
+
+      .totals-table .text-right {
+        text-align: right;
+      }
+
+      /* Footer */
+      .footer {
+        position: absolute;
+        bottom: 1.5cm;
+        left: 2cm;
+        right: 2cm;
+        text-align: center;
+        font-size: 10px;
+        color: #666;
+        border-top: 1px solid #eee;
+        padding-top: 15px;
+      }
+
+      .footer p {
+        margin: 3px 0;
+      }
+
+      /* Método de pago */
+      .payment-method {
+        margin-top: 1cm;
+        font-size: 11px;
+      }
+
+      .payment-method strong {
+        color: #333;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="receipt-wrapper">
+      <!-- Header -->
+      <div class="header">
+        <div class="company-section">
+          <div class="company-logo">
+            {% if logo_path %}
+            <img
+              src="{{ logo_path }}"
+              alt="Logo NetSys Solutions"
+              class="logo"
+            />
+            {% endif %}
+          </div>
+          <div class="company-details">
+            <div class="company-name">{{ company_name }}</div>
+            <p>{{ company_address }}</p>
+            <p>{{ company_contact }}</p>
+          </div>
+        </div>
+        <div class="receipt-title">RECIBO DE PAGO</div>
       </div>
-    </header>
 
-    <section>
-      <article>
-        <h2>Cliente</h2>
-        <p>{{ client_name }}</p>
-        <p>DNI: {{ client_dni }}</p>
-        <p>{{ client_address }}</p>
-      </article>
-      <article>
-        <h2>Pago</h2>
-        <p>Fecha de Pago: {{ payment_date }}</p>
-        <p>Monto Abonado: ${{ "%.2f"|format(amount_paid) }}</p>
-        <p>Forma de Pago: {{ payment_method }}</p>
-      </article>
-    </section>
+      <!-- Detalles del cliente y recibo -->
+      <div class="details-section">
+        <div class="client-info">
+          <h2>CLIENTE:</h2>
+          <p><strong>{{ client_name }}</strong></p>
+          <p>{{ client_address }}</p>
+          <p>
+            {% if client_barrio and client_barrio != 'None' %}{{ client_barrio
+            }}, {% endif %}{{ client_city }}
+          </p>
+          <p>Email: {{ client_email }}</p>
+        </div>
+        <div class="receipt-info">
+          <p><strong>RECIBO N°:</strong></p>
+          <p>{{ receipt_number }}</p>
+          <p><strong>FECHA DE PAGO:</strong></p>
+          <p>{{ payment_date }}</p>
+        </div>
+      </div>
 
-    <aside>
-      Total Pagado: ${{ "%.2f"|format(amount_paid) }}
-    </aside>
+      <!-- Tabla de items -->
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th>Descripción</th>
+            <th class="text-center">Cantidad</th>
+            <th class="text-right">Precio Unit.</th>
+            <th class="text-right">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>{{ item_description }} (x1)</td>
+            <td class="text-center">1</td>
+            <td class="text-right">{{ "%.2f"|format(base_amount) }} €</td>
+            <td class="text-right">{{ "%.2f"|format(base_amount) }} €</td>
+          </tr>
+          {% if late_fee > 0 %}
+          <tr>
+            <td>Recargo por mora (x1)</td>
+            <td class="text-center">1</td>
+            <td class="text-right">{{ "%.2f"|format(late_fee) }} €</td>
+            <td class="text-right">{{ "%.2f"|format(late_fee) }} €</td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
 
-    <footer>
-      Este recibo confirma la recepción del pago. Gracias por elegirnos.<br />
-      contacto@miempresa.com | Tel. (123) 456-7890
-    </footer>
-  </main>
-</body>
+      <!-- Método de pago y total -->
+      <div class="payment-method">
+        <p><strong>MÉTODO DE PAGO:</strong> N/A (Factura)</p>
+      </div>
+
+      <div class="totals-section">
+        <table class="totals-table">
+          <tr class="total-row">
+            <td><strong>TOTAL PAGADO:</strong></td>
+            <td class="text-right">
+              <strong>{{ "%.2f"|format(total_paid) }} €</strong>
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <p><strong>Gracias por su pago.</strong></p>
+        <p>Notas: Factura {{ receipt_number }}. Vence el {{ due_date }}.</p>
+      </div>
+    </div>
+  </body>
 </html>

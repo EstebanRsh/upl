@@ -75,17 +75,24 @@ class UserDetail(Base):
     firstname = Column("firstname", String)
     lastname = Column("lastname", String)
     address = Column("address", String)
+    barrio = Column("barrio", String, nullable=True)
+    city = Column("city", String, nullable=True)
+    phone = Column("phone", String)
     phone = Column("phone", String)
     # Relación inversa para poder acceder al objeto User desde un UserDetail.
     user = relationship("User", back_populates="userdetail")
 
-    def __init__(self, dni, firstname, lastname, address, phone):
+    def __init__(
+        self, dni, firstname, lastname, address, phone, city=None, barrio=None
+    ):
         """Constructor para crear una instancia de UserDetail."""
         self.dni = dni
         self.firstname = firstname
         self.lastname = lastname
         self.address = address
         self.phone = phone
+        self.city = city
+        self.barrio = barrio
 
 
 class InternetPlan(Base):

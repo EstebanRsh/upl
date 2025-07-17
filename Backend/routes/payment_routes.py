@@ -6,7 +6,11 @@
 # 1. Registrar un nuevo pago, lo que implica actualizar una factura y generar un recibo.
 # 2. Consultar el historial de pagos de un usuario de forma paginada.
 # -----------------------------------------------------------------------------
-
+import random
+from PIL import Image, ImageDraw, ImageFont
+import locale
+import traceback
+from num2words import num2words
 import os
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 import math
@@ -33,7 +37,12 @@ payment_router = APIRouter()
 @payment_router.post(
     "/payments/add",
     summary="Registrar un nuevo pago",
-    description="**Permisos requeridos: `administrador`**.<br>Registra un pago para la factura pendiente más antigua de un usuario. Si el pago es exitoso, actualiza el estado de la factura a 'pagada' y genera un recibo en PDF.",
+    description="**Permisos requeridos: `administrador`**.<br>Registra un pago para la factura pendiente más antigua de un usuario, la marca como pagada y genera un recibo en PDF con un sello de agua de imagen.",
+)
+@payment_router.post(
+    "/payments/add",
+    summary="Registrar un nuevo pago",
+    description="**Permisos requeridos: `administrador`**.<br>Registra un pago para la factura pendiente más antigua de un usuario, la marca como pagada y genera un recibo en PDF.",
 )
 def add_payment(
     payment_data: InputPayment,
@@ -41,38 +50,27 @@ def add_payment(
     db: Session = Depends(get_db),
 ):
     try:
-        # Busca la factura pendiente más antigua del usuario, cargando relaciones
+        # 1. Buscar la factura pendiente más antigua
         invoice_to_pay = (
             db.query(Invoice)
+            .join(User, Invoice.user_id == User.id)
             .options(
                 joinedload(Invoice.user).joinedload(User.userdetail),
                 joinedload(Invoice.subscription).joinedload(Subscription.plan),
             )
-            .filter(
-                Invoice.user_id == payment_data.user_id, Invoice.status == "pending"
-            )
-            .order_by(Invoice.issue_date.asc())
+            .filter(User.id == payment_data.user_id, Invoice.status == "pending")
+            .order_by(Invoice.issue_date)
             .first()
         )
+
         if not invoice_to_pay:
             return JSONResponse(
                 status_code=404,
-                content={
-                    "message": "No se encontró una factura pendiente para este usuario."
-                },
+                content={"message": "No se encontró una factura pendiente."},
             )
 
-        # --- Lógica de validación del monto (sin cambios) ---
-        if payment_data.amount != invoice_to_pay.total_amount:
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "message": "El monto del pago no coincide con el total de la factura.",
-                    "monto_requerido": invoice_to_pay.total_amount,
-                    "monto_recibido": payment_data.amount,
-                },
-            )
-
+        # 2. Actualizar estado y crear el pago
+        invoice_to_pay.status = "paid"
         new_payment = Payment(
             user_id=payment_data.user_id,
             amount=payment_data.amount,
@@ -80,48 +78,99 @@ def add_payment(
         )
         db.add(new_payment)
         db.flush()
+        db.refresh(new_payment)
 
-        invoice_to_pay.status = "paid"
-
-        # --- Preparamos el DICCIONARIO DE DATOS COMPLETO para el PDF ---
+        # 3. Preparar los datos para el PDF con el formato del recibo de referencia
         user_details = invoice_to_pay.user.userdetail
         plan_details = invoice_to_pay.subscription.plan
 
+        # Formatear el mes del servicio en español
+        meses = {
+            1: "Enero",
+            2: "Febrero",
+            3: "Marzo",
+            4: "Abril",
+            5: "Mayo",
+            6: "Junio",
+            7: "Julio",
+            8: "Agosto",
+            9: "Septiembre",
+            10: "Octubre",
+            11: "Noviembre",
+            12: "Diciembre",
+        }
+        mes_servicio = (
+            f"{meses[invoice_to_pay.issue_date.month]} {invoice_to_pay.issue_date.year}"
+        )
+
+        # Obtener la ruta absoluta del logo (buscar en diferentes formatos)
+        logo_formats = ["logo.png", "logo.jpg", "logo.jpeg", "logo.svg"]
+        logo_path = None
+
+        for logo_name in logo_formats:
+            potential_path = os.path.abspath(os.path.join("templates", logo_name))
+            if os.path.exists(potential_path):
+                logo_path = potential_path
+                break
+
+        if not logo_path:
+            print(
+                "Advertencia: No se encontró el logo de la empresa en la carpeta templates/"
+            )
+
+        # Formatear el número de recibo
+        receipt_number = f"F{new_payment.payment_date.year}-{invoice_to_pay.id:03d}"
+
         pdf_data = {
-            "invoice_id": invoice_to_pay.id,
-            "issue_date": invoice_to_pay.issue_date.strftime("%d/%m/%Y"),
-            "due_date": invoice_to_pay.due_date.strftime("%d/%m/%Y"),
-            "payment_date": new_payment.payment_date.strftime("%d/%m/%Y"),
+            "company_name": "NetSys Solutions",
+            "company_address": "Calle Ficticia 123, Ciudad Ejemplo",
+            "company_contact": "Tel: 900 123 456 | Email: contacto@netsys.com",
+            "logo_path": logo_path,
             "client_name": f"{user_details.firstname} {user_details.lastname}",
             "client_dni": user_details.dni,
             "client_address": user_details.address,
-            "plan_name": plan_details.name,
+            "client_barrio": user_details.barrio,
+            "client_city": user_details.city,
+            "client_phone": user_details.phone,
+            "client_email": invoice_to_pay.user.email,
+            "receipt_number": receipt_number,
+            "payment_date": new_payment.payment_date.strftime("%d/%m/%Y"),
+            "due_date": invoice_to_pay.due_date.strftime("%d/%m/%Y"),
+            "item_description": f"Servicio Internet Premium Fibra {plan_details.speed_mbps}MB - {mes_servicio}",
             "base_amount": invoice_to_pay.base_amount,
             "late_fee": invoice_to_pay.late_fee,
-            "amount_paid": new_payment.amount,
+            "total_paid": new_payment.amount,
+            "invoice_id": invoice_to_pay.id,
         }
 
-        # Llama a la nueva función de utilidad para crear el PDF
+        # 4. Generar el PDF
         pdf_filename = create_invoice_pdf(pdf_data)
+        invoice_to_pay.receipt_pdf_url = os.path.join(
+            str(new_payment.payment_date.year),
+            f"{new_payment.payment_date.month:02d}",
+            pdf_filename,
+        ).replace("\\", "/")
 
-        # Guarda la ruta relativa del PDF generado
-        now = datetime.now()  # No necesitas datetime.datetime.now()
-        year = str(now.year)
-        month = str(now.month).zfill(2)
-        full_relative_path = os.path.join(year, month, pdf_filename).replace("\\", "/")
-        invoice_to_pay.receipt_pdf_url = full_relative_path
-
+        # 5. Confirmar y responder
         db.commit()
+
         return JSONResponse(
             status_code=201,
             content={
-                "message": "Pago registrado y factura mejorada generada.",
-                "pdf_path": invoice_to_pay.receipt_pdf_url,
+                "message": "Pago registrado exitosamente.",
+                "receipt_number": receipt_number,
+                "pdf_filename": pdf_filename,
+                "total_paid": new_payment.amount,
             },
         )
+
     except Exception as e:
         db.rollback()
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        print(f"Error en /payments/add: {e}\n{traceback.format_exc()}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Ocurrió un error interno al procesar el pago."},
+        )
 
 
 @payment_router.get(

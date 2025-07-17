@@ -19,3 +19,7 @@ httpx
 pytest
 Jinja2
 xhtml2pdf
+num2words 
+Pillow
+WeasyPrint           # en linux debes instalar sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libharfbuzz0 libpangoft2-1.0-0
+PyPDF2

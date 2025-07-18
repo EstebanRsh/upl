@@ -26,7 +26,7 @@ from models.models import (
     Subscription,
 )
 from auth.security import get_current_user, is_admin
-from utils.pdf_generator import create_invoice_pdf
+from utils.pdf_generator import generate_payment_receipt
 from config.db import get_db
 from datetime import datetime
 
@@ -45,8 +45,7 @@ def add_payment(
     db: Session = Depends(get_db),
 ):
     try:
-        # 1. Buscar la suscripción que corresponde al usuario y al plan del pago.
-        #    Esto nos permite identificar exactamente qué servicio se está pagando.
+        # Esta parte para buscar la factura correcta ya está bien, no la toques.
         subscription = (
             db.query(Subscription)
             .filter(
@@ -55,8 +54,6 @@ def add_payment(
             )
             .first()
         )
-
-        # Si no se encuentra una suscripción, no se puede continuar.
         if not subscription:
             return JSONResponse(
                 status_code=404,
@@ -65,21 +62,18 @@ def add_payment(
                 },
             )
 
-        # 2. Ahora, buscar la factura pendiente que pertenece a ESA suscripción específica.
         invoice_to_pay = (
             db.query(Invoice)
             .filter(
-                Invoice.subscription_id == subscription.id,
-                Invoice.status == "pending",
+                Invoice.subscription_id == subscription.id, Invoice.status == "pending"
             )
-            .options(  # Estos joins los mantenemos para poder generar el PDF después
+            .options(
                 joinedload(Invoice.user).joinedload(User.userdetail),
                 joinedload(Invoice.subscription).joinedload(Subscription.plan),
             )
             .order_by(Invoice.issue_date)
             .first()
         )
-
         if not invoice_to_pay:
             return JSONResponse(
                 status_code=404,
@@ -87,7 +81,8 @@ def add_payment(
                     "message": "No se encontró una factura pendiente para esta suscripción."
                 },
             )
-        # 2. Actualizar estado y crear el pago
+
+        # Esta parte para crear el pago también está bien.
         invoice_to_pay.status = "paid"
         new_payment = Payment(
             user_id=payment_data.user_id,
@@ -98,86 +93,27 @@ def add_payment(
         db.flush()
         db.refresh(new_payment)
 
-        # 3. Preparar los datos para el PDF con el formato del recibo de referencia
-        user_details = invoice_to_pay.user.userdetail
-        plan_details = invoice_to_pay.subscription.plan
+        # --- INICIO DE LA MODIFICACIÓN ---
+        #
+        # Reemplazamos todo el bloque de código que preparaba el PDF
+        # con estas dos líneas mucho más limpias.
+        #
+        receipt_url = generate_payment_receipt(new_payment, invoice_to_pay)
+        invoice_to_pay.receipt_pdf_url = receipt_url
+        #
+        # --- FIN DE LA MODIFICACIÓN ---
 
-        # Formatear el mes del servicio en español
-        meses = {
-            1: "Enero",
-            2: "Febrero",
-            3: "Marzo",
-            4: "Abril",
-            5: "Mayo",
-            6: "Junio",
-            7: "Julio",
-            8: "Agosto",
-            9: "Septiembre",
-            10: "Octubre",
-            11: "Noviembre",
-            12: "Diciembre",
-        }
-        mes_servicio = (
-            f"{meses[invoice_to_pay.issue_date.month]} {invoice_to_pay.issue_date.year}"
-        )
-
-        # Obtener la ruta absoluta del logo (buscar en diferentes formatos)
-        logo_formats = ["logo.png", "logo.jpg", "logo.jpeg", "logo.svg"]
-        logo_path = None
-
-        for logo_name in logo_formats:
-            potential_path = os.path.abspath(os.path.join("templates", logo_name))
-            if os.path.exists(potential_path):
-                logo_path = potential_path
-                break
-
-        if not logo_path:
-            print(
-                "Advertencia: No se encontró el logo de la empresa en la carpeta templates/"
-            )
-
-        # Formatear el número de recibo
-        receipt_number = f"F{new_payment.payment_date.year}-{invoice_to_pay.id:03d}"
-
-        pdf_data = {
-            "company_name": "NetSys Solutions",
-            "company_address": "Calle Ficticia 123, Ciudad Ejemplo",
-            "company_contact": "Tel: 900 123 456 | Email: contacto@netsys.com",
-            "logo_path": logo_path,
-            "client_name": f"{user_details.firstname} {user_details.lastname}",
-            "client_dni": user_details.dni,
-            "client_address": user_details.address,
-            "client_barrio": user_details.barrio,
-            "client_city": user_details.city,
-            "client_phone": user_details.phone,
-            "client_email": invoice_to_pay.user.email,
-            "receipt_number": receipt_number,
-            "payment_date": new_payment.payment_date.strftime("%d/%m/%Y"),
-            "due_date": invoice_to_pay.due_date.strftime("%d/%m/%Y"),
-            "item_description": f"Servicio Internet Premium Fibra {plan_details.speed_mbps}MB - {mes_servicio}",
-            "base_amount": invoice_to_pay.base_amount,
-            "late_fee": invoice_to_pay.late_fee,
-            "total_paid": new_payment.amount,
-            "invoice_id": invoice_to_pay.id,
-        }
-
-        # 4. Generar el PDF
-        pdf_filename = create_invoice_pdf(pdf_data)
-        invoice_to_pay.receipt_pdf_url = os.path.join(
-            str(new_payment.payment_date.year),
-            f"{new_payment.payment_date.month:02d}",
-            pdf_filename,
-        ).replace("\\", "/")
-
-        # 5. Confirmar y responder
+        # Confirmar y responder
         db.commit()
 
         return JSONResponse(
             status_code=201,
             content={
                 "message": "Pago registrado exitosamente.",
-                "receipt_number": receipt_number,
-                "pdf_filename": pdf_filename,
+                "receipt_number": f"F{new_payment.payment_date.year}-{invoice_to_pay.id:03d}",
+                "pdf_filename": os.path.basename(
+                    receipt_url
+                ),  # Obtenemos el nombre del archivo
                 "total_paid": new_payment.amount,
             },
         )

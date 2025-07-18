@@ -2,6 +2,7 @@ import os
 import datetime
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML, CSS
+from models.models import Payment, Invoice
 
 # Carpeta de plantillas
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "..", "templates")
@@ -111,3 +112,86 @@ def generate_receipt_number(payment_id, year):
     Genera un número de recibo con el formato F2025-XXX
     """
     return f"F{year}-{payment_id:03d}"
+
+
+def generate_payment_receipt(payment: Payment, invoice: Invoice) -> str:
+    """
+    Prepara los datos, genera el PDF para un recibo de pago y devuelve la URL del archivo.
+
+    Args:
+        payment: El objeto Payment recién creado.
+        invoice: La factura que se ha pagado.
+
+    Returns:
+        La ruta relativa del archivo PDF generado.
+    """
+    # 1. Preparar los datos para el PDF
+    user_details = invoice.user.userdetail
+    plan_details = invoice.subscription.plan
+
+    # Formatear el mes del servicio en español
+    meses = {
+        1: "Enero",
+        2: "Febrero",
+        3: "Marzo",
+        4: "Abril",
+        5: "Mayo",
+        6: "Junio",
+        7: "Julio",
+        8: "Agosto",
+        9: "Septiembre",
+        10: "Octubre",
+        11: "Noviembre",
+        12: "Diciembre",
+    }
+    mes_servicio = f"{meses[invoice.issue_date.month]} {invoice.issue_date.year}"
+
+    # Obtener la ruta absoluta del logo
+    logo_formats = ["logo.png", "logo.jpg", "logo.jpeg"]
+    logo_path = None
+    for logo_name in logo_formats:
+        potential_path = os.path.abspath(os.path.join("templates", logo_name))
+        if os.path.exists(potential_path):
+            logo_path = potential_path
+            break
+    if not logo_path:
+        print(
+            "Advertencia: No se encontró el logo de la empresa en la carpeta templates/"
+        )
+
+    # Formatear el número de recibo
+    receipt_number = f"F{payment.payment_date.year}-{invoice.id:03d}"
+
+    pdf_data = {
+        "company_name": "NetSys Solutions",
+        "company_address": "Calle Ficticia 123, Ciudad Ejemplo",
+        "company_contact": "Tel: 900 123 456 | Email: contacto@netsys.com",
+        "logo_path": logo_path,
+        "client_name": f"{user_details.firstname} {user_details.lastname}",
+        "client_dni": user_details.dni,
+        "client_address": user_details.address,
+        "client_barrio": user_details.barrio,
+        "client_city": user_details.city,
+        "client_phone": user_details.phone,
+        "client_email": invoice.user.email,
+        "receipt_number": receipt_number,
+        "payment_date": payment.payment_date.strftime("%d/%m/%Y"),
+        "due_date": invoice.due_date.strftime("%d/%m/%Y"),
+        "item_description": f"Servicio Internet Premium Fibra {plan_details.speed_mbps}MB - {mes_servicio}",
+        "base_amount": invoice.base_amount,
+        "late_fee": invoice.late_fee,
+        "total_paid": payment.amount,
+        "invoice_id": invoice.id,
+    }
+
+    # 2. Llamar a la función que crea el PDF
+    pdf_filename = create_invoice_pdf(pdf_data)
+
+    # 3. Construir y devolver la URL del recibo
+    receipt_url = os.path.join(
+        str(payment.payment_date.year),
+        f"{payment.payment_date.month:02d}",
+        pdf_filename,
+    ).replace("\\", "/")
+
+    return receipt_url

@@ -103,8 +103,6 @@ def read_root():
     return {"welcome": "Bienvenido a la API de ISP"}
 
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
 # Comando para ejecutar la aplicación con Uvicorn.
 # 'uvicorn app:app' -> le dice a uvicorn que busque el objeto 'app' en el archivo 'app.py'.
 # '--reload' -> reinicia el servidor automáticamente cada vez que se detecta un cambio en el código.

@@ -1,134 +1,113 @@
-import os
 import datetime
+from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML, CSS
-from models.models import Payment, Invoice
-from pathlib import Path
+from models.models import (
+    Payment,
+    Invoice,
+)  # Asegúrate que la importación a tus modelos sea correcta
 
-# Carpeta de plantillas
-TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "..", "templates")
+# --- CONSTANTES DE CONFIGURACIÓN ---
+
+# Path() crea un objeto de ruta. __file__ es la ruta de este archivo (pdf_generator.py).
+# .parent se mueve un nivel hacia arriba en el directorio.
+# Usamos .parent.parent para llegar desde /utils/ hasta la carpeta /Backend/
+# Luego, apuntamos a la carpeta 'templates'.
+TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
+
+# Directorio base donde se guardarán todas las facturas generadas.
+INVOICES_DIR = Path("facturas")
+
+
+# --- FUNCIONES AUXILIARES ---
+
+
+def get_logo_path():
+    """
+    Busca el logo en la carpeta de plantillas y devuelve su ruta como una URL de archivo.
+    WeasyPrint necesita una URL (ej: 'file:///path/to/logo.png') para encontrar la imagen.
+    """
+    # Itera sobre las extensiones de imagen más comunes.
+    for ext in ["png", "jpg", "jpeg", "svg"]:
+        logo_path = TEMPLATES_DIR / f"logo.{ext}"
+        if logo_path.exists():
+            # .as_uri() convierte la ruta del sistema de archivos a una URI, ej: "file:///..."
+            return logo_path.as_uri()
+    print(
+        "Advertencia: No se encontró el logo (logo.png, logo.jpg, etc.) en la carpeta 'templates'."
+    )
+    return None
 
 
 def create_invoice_pdf(invoice_data: dict) -> str:
     """
-    Crea un PDF a partir de datos usando WeasyPrint, que soporta CSS moderno.
-    Formateo mejorado para coincidir con el recibo de referencia.
+    Crea un archivo PDF a partir de datos y una plantilla HTML.
+
+    Esta función renderiza el HTML, lo combina con una hoja de estilos CSS externa
+    y genera un archivo PDF usando WeasyPrint.
+
+    Args:
+        invoice_data: Un diccionario con todos los datos necesarios para la plantilla.
+
+    Returns:
+        La ruta relativa del archivo PDF generado, como un string.
     """
-    # 1. Definir la ruta de salida
-    now = datetime.datetime.now()
-    out_dir = os.path.join("facturas", str(now.year), f"{now.month:02d}")
-    os.makedirs(out_dir, exist_ok=True)
-
-    # Generar nombre del archivo basado en cliente y fecha
-    client_name = invoice_data.get("client_name", "Cliente").replace(" ", "_")
-    filename = f"Recibo_{client_name}_f{invoice_data['invoice_id']}.pdf"
-    full_path = os.path.join(out_dir, filename)
-
-    # 2. Verificar y preparar la ruta del logo
-    logo_path = invoice_data.get("logo_path")
-    if logo_path and os.path.exists(logo_path):
-        # Convertir a URL relativa para WeasyPrint
-        logo_url = f"file://{os.path.abspath(logo_path)}"
-        invoice_data["logo_path"] = logo_url
-    else:
-        # Buscar el logo en diferentes formatos
-        logo_formats = ["logo.png", "logo.jpg", "logo.jpeg", "logo.svg"]
-        templates_dir = os.path.abspath(TEMPLATES_DIR)
-
-        for logo_name in logo_formats:
-            logo_full_path = os.path.join(templates_dir, logo_name)
-            if os.path.exists(logo_full_path):
-                invoice_data["logo_path"] = f"file://{logo_full_path}"
-                break
-        else:
-            invoice_data["logo_path"] = None
-            print("Advertencia: No se encontró el logo de la empresa")
-
-    # 3. Cargar y renderizar la plantilla HTML
+    # 1. Configurar Jinja2 para cargar la plantilla desde el directorio 'templates'.
     env = Environment(loader=FileSystemLoader(TEMPLATES_DIR), autoescape=True)
     template = env.get_template("invoice.html")
+
+    # 2. Renderizar la plantilla HTML con los datos proporcionados.
     html_string = template.render(**invoice_data)
 
-    # 4. Configurar CSS adicional para mejorar el formato
-    css_string = """
-    @page {
-        size: A4;
-        margin: 0;
-    }
-    
-    body {
-        font-family: "Arial", "Helvetica", sans-serif;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-    }
-    
-    .receipt-wrapper {
-        page-break-inside: avoid;
-    }
-    
-    .items-table {
-        page-break-inside: avoid;
-    }
-    
-    .totals-section {
-        page-break-inside: avoid;
-    }
-    
-    .logo {
-        max-width: 100px;
-        height: auto;
-        display: block;
-    }
-    """
+    # 3. Crear la ruta de salida para el PDF (ej: facturas/2024/07/Recibo_...).
+    now = datetime.datetime.now()
+    output_dir = INVOICES_DIR / str(now.year) / f"{now.month:02d}"
+    output_dir.mkdir(parents=True, exist_ok=True)  # Crea los directorios si no existen.
 
-    # 5. Generar PDF con WeasyPrint
-    base_url = f"file://{os.path.abspath(os.path.join(TEMPLATES_DIR, os.pardir))}"
+    # Limpia el nombre del cliente para usarlo en el nombre del archivo.
+    client_name_safe = invoice_data.get("client_name", "Cliente").replace(" ", "_")
+    filename = f"Recibo_{client_name_safe}_f{invoice_data['invoice_id']}.pdf"
+    full_path = output_dir / filename
 
-    html = HTML(string=html_string, base_url=base_url)
-    css = CSS(string=css_string)
+    # 4. Cargar la hoja de estilos CSS externa.
+    css_path = TEMPLATES_DIR / "style.css"
+    if not css_path.exists():
+        raise FileNotFoundError(
+            f"El archivo 'style.css' no se encuentra en la ruta: {css_path}"
+        )
 
-    html.write_pdf(full_path, stylesheets=[css])
+    # 5. Generar el PDF con WeasyPrint.
+    # El 'base_url' es el paso CRÍTICO: le dice a WeasyPrint desde dónde resolver las
+    # rutas relativas como las del CSS enlazado o las imágenes en el HTML.
+    html_doc = HTML(string=html_string, base_url=TEMPLATES_DIR.as_uri())
 
-    return filename
+    # Escribimos el PDF en el disco, aplicando los estilos del archivo CSS.
+    html_doc.write_pdf(full_path, stylesheets=[CSS(css_path)])
 
+    print(f"Factura generada exitosamente en: {full_path}")
 
-def format_spanish_date(date_obj):
-    """
-    Formatea una fecha al formato español DD/MM/YYYY
-    """
-    if isinstance(date_obj, datetime.datetime):
-        return date_obj.strftime("%d/%m/%Y")
-    return date_obj
-
-
-def format_currency(amount):
-    """
-    Formatea un número como moneda española
-    """
-    return f"{amount:.2f} €"
-
-
-def generate_receipt_number(payment_id, year):
-    """
-    Genera un número de recibo con el formato F2025-XXX
-    """
-    return f"F{year}-{payment_id:03d}"
+    # Devolvemos la ruta relativa del archivo (ej: 'facturas/2024/07/archivo.pdf')
+    # para que pueda ser guardada en la base de datos. .as_posix() asegura
+    # que se usen barras '/' en la ruta, lo cual es estándar para URLs.
+    return str(full_path.as_posix())
 
 
 def generate_payment_receipt(payment: Payment, invoice: Invoice) -> str:
     """
-    Prepara los datos, genera el PDF para un recibo de pago y devuelve la URL del archivo.
-    """
-    # --- LÓGICA DEL LOGO SIMPLIFICADA ---
-    # En lugar de buscar en el disco, le damos la URL directa del logo.
-    # FastAPI se encargará de servirlo desde la carpeta 'static'.
-    logo_url = "/static/logo.png"
+    Prepara los datos de un pago y una factura, y llama a la función de creación de PDF.
 
-    # --- El resto de la preparación de datos queda igual ---
+    Args:
+        payment: El objeto de SQLAlchemy del Pago.
+        invoice: El objeto de SQLAlchemy de la Factura.
+
+    Returns:
+        La ruta relativa del archivo PDF generado.
+    """
     user_details = invoice.user.userdetail
     plan_details = invoice.subscription.plan
 
-    meses = {
+    # Diccionario para traducir el número del mes a su nombre en español.
+    meses_es = {
         1: "Enero",
         2: "Febrero",
         3: "Marzo",
@@ -142,41 +121,31 @@ def generate_payment_receipt(payment: Payment, invoice: Invoice) -> str:
         11: "Noviembre",
         12: "Diciembre",
     }
-    mes_servicio = f"{meses[invoice.issue_date.month]} {invoice.issue_date.year}"
+    mes_servicio = (
+        f"{meses_es.get(invoice.issue_date.month, '')} {invoice.issue_date.year}"
+    )
     receipt_number = f"F{payment.payment_date.year}-{invoice.id:03d}"
 
+    # Preparamos el diccionario de datos para pasarlo a la plantilla Jinja2.
     pdf_data = {
-        # Pasamos la URL del logo a la plantilla.
-        "logo_path": logo_url,
-        # El resto de los datos no cambia.
-        "company_name": "NetSys Solutions",
+        "logo_path": get_logo_path(),
+        "company_name": "NetSys Solutions",  # Puedes mover esto a un archivo de config.
         "company_address": "Calle Ficticia 123, Ciudad Ejemplo",
         "company_contact": "Tel: 900 123 456 | Email: contacto@netsys.com",
         "client_name": f"{user_details.firstname} {user_details.lastname}",
-        "client_dni": user_details.dni,
         "client_address": user_details.address,
-        "client_barrio": user_details.barrio,
-        "client_city": user_details.city,
-        "client_phone": user_details.phone,
         "client_email": invoice.user.email,
         "receipt_number": receipt_number,
         "payment_date": payment.payment_date.strftime("%d/%m/%Y"),
         "due_date": invoice.due_date.strftime("%d/%m/%Y"),
-        "item_description": f"Servicio Internet Premium Fibra {plan_details.speed_mbps}MB - {mes_servicio}",
+        "item_description": f"Servicio Internet Fibra {plan_details.speed_mbps}MB - {mes_servicio}",
         "base_amount": invoice.base_amount,
         "late_fee": invoice.late_fee,
         "total_paid": payment.amount,
         "invoice_id": invoice.id,
     }
 
-    # Esta llamada a la función que realmente crea el PDF no cambia.
-    pdf_filename = create_invoice_pdf(pdf_data)
+    # Llamamos a la función principal que crea el PDF.
+    pdf_file_path = create_invoice_pdf(pdf_data)
 
-    # La construcción de la URL final tampoco cambia.
-    receipt_url = os.path.join(
-        str(payment.payment_date.year),
-        f"{payment.payment_date.month:02d}",
-        pdf_filename,
-    ).replace("\\", "/")
-
-    return receipt_url
+    return pdf_file_path

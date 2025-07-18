@@ -3,43 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <title>Recibo {{ receipt_number }}</title>
-    <style>
-      @page {
-        size: A4;
-        margin: 0;
-      }
-
-      body {
-        font-family: "Lato", sans-serif;
-        font-size: 10pt;
-        color: #333;
-        margin: 0;
-      }
-
-      .receipt-container {
-        height: 14.85cm;
-        width: 21cm;
-        padding: 2cm;
-        box-sizing: border-box;
-        position: relative;
-        display: flex;
-        flex-direction: column;
-      }
-    </style>
+    <link rel="stylesheet" href="style.css" />
   </head>
-
   <body>
     <div class="receipt-container">
-      <div class="header">
+      <header class="header">
+        <div class="company-logo">
+          {% if logo_path %}
+          <img src="{{ logo_path }}" alt="Logo de la empresa" class="logo" />
+          {% endif %}
+        </div>
         <div class="company-details">
           <p class="company-name">{{ company_name }}</p>
           <p>{{ company_address }}</p>
           <p>{{ company_contact }}</p>
         </div>
         <div class="receipt-title">RECIBO</div>
-      </div>
+      </header>
 
-      <div class="details-section">
+      <section class="details-section">
         <div class="client-info">
           <h2>CLIENTE</h2>
           <p><strong>{{ client_name }}</strong></p>
@@ -50,7 +32,7 @@
           <p><strong>RECIBO N°:</strong> {{ receipt_number }}</p>
           <p><strong>FECHA DE PAGO:</strong> {{ payment_date }}</p>
         </div>
-      </div>
+      </section>
 
       <table class="items-table">
         <thead>
@@ -76,19 +58,22 @@
             <td class="text-right">{{ "%.2f €"|format(late_fee) }}</td>
           </tr>
           {% endif %}
+        </tbody>
+        <tfoot>
           <tr class="total-row">
             <td colspan="2">MÉTODO DE PAGO: N/A (Factura)</td>
-            <td class="text-right">TOTAL PAGADO</td>
-            <td class="text-right">{{ "%.2f €"|format(total_paid) }}</td>
+            <td class="text-right"><strong>TOTAL PAGADO</strong></td>
+            <td class="text-right">
+              <strong>{{ "%.2f €"|format(total_paid) }}</strong>
+            </td>
           </tr>
-        </tbody>
+        </tfoot>
       </table>
 
-      <div class="footer">
+      <footer class="footer">
         <p><strong>Gracias por su pago.</strong></p>
         <p>Notas: Factura {{ receipt_number }}. Vence el {{ due_date }}.</p>
-      </div>
+      </footer>
     </div>
-    <div class="cutting-mark"></div>
   </body>
 </html>

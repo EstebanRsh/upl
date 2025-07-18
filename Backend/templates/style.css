@@ -1,0 +1,104 @@
+@page {
+  size: A4;
+  margin: 1cm;
+}
+
+body {
+  font-family: "Helvetica", "Arial", sans-serif;
+  font-size: 10pt;
+  color: #333;
+}
+
+.receipt-container {
+  width: 100%;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 2px solid #eee;
+  padding-bottom: 10px;
+  margin-bottom: 20px;
+}
+
+.company-logo .logo {
+  max-width: 150px;
+  height: auto;
+}
+
+.company-details {
+  text-align: left;
+}
+
+.company-name {
+  font-size: 1.5em;
+  font-weight: bold;
+  color: #000;
+}
+
+.receipt-title {
+  font-size: 2em;
+  font-weight: bold;
+  text-align: right;
+  color: #555;
+}
+
+.details-section {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 30px;
+}
+
+.client-info,
+.receipt-info {
+  width: 48%;
+}
+
+.receipt-info {
+  text-align: right;
+}
+
+h2 {
+  font-size: 1.2em;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 5px;
+  margin-top: 0;
+}
+
+.items-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 30px;
+}
+
+.items-table th,
+.items-table td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+.items-table th {
+  background-color: #f2f2f2;
+  font-weight: bold;
+}
+
+.items-table .text-right {
+  text-align: right;
+}
+
+.items-table tfoot .total-row td {
+  border-top: 2px solid #333;
+  font-weight: bold;
+}
+
+.footer {
+  margin-top: 40px;
+  padding-top: 10px;
+  border-top: 1px solid #eee;
+  text-align: center;
+  font-size: 9pt;
+  color: #777;
+}

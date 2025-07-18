@@ -5,23 +5,15 @@ from weasyprint import HTML, CSS
 from models.models import (
     Payment,
     Invoice,
-)  # Asegúrate que la importación a tus modelos sea correcta
+)
 
 # --- CONSTANTES DE CONFIGURACIÓN ---
-
-# Path() crea un objeto de ruta. __file__ es la ruta de este archivo (pdf_generator.py).
-# .parent se mueve un nivel hacia arriba en el directorio.
-# Usamos .parent.parent para llegar desde /utils/ hasta la carpeta /Backend/
-# Luego, apuntamos a la carpeta 'templates'.
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
-
 # Directorio base donde se guardarán todas las facturas generadas.
 INVOICES_DIR = Path("facturas")
 
 
 # --- FUNCIONES AUXILIARES ---
-
-
 def get_logo_path():
     """
     Busca el logo en la carpeta de plantillas y devuelve su ruta como una URL de archivo.
@@ -129,16 +121,19 @@ def generate_payment_receipt(payment: Payment, invoice: Invoice) -> str:
     # Preparamos el diccionario de datos para pasarlo a la plantilla Jinja2.
     pdf_data = {
         "logo_path": get_logo_path(),
-        "company_name": "NetSys Solutions",  # Puedes mover esto a un archivo de config.
-        "company_address": "Calle Ficticia 123, Ciudad Ejemplo",
-        "company_contact": "Tel: 900 123 456 | Email: contacto@netsys.com",
+        "company_name": "Up Link",  # Puedes mover esto a un archivo de config.
+        "company_address": "Av. San Martin 123, Bovril",
+        "company_dni": "CUIT: 30-12345678-9",
+        "company_contact": "Whatsapp: +54 9 3438 41-1490  | Email: uplink@gmail.com",
         "client_name": f"{user_details.firstname} {user_details.lastname}",
+        "client_dni": f"DNI: {user_details.dni}",
         "client_address": user_details.address,
+        "client_phone": f"Tel: {user_details.phone}",
         "client_email": invoice.user.email,
         "receipt_number": receipt_number,
         "payment_date": payment.payment_date.strftime("%d/%m/%Y"),
         "due_date": invoice.due_date.strftime("%d/%m/%Y"),
-        "item_description": f"Servicio Internet Fibra {plan_details.speed_mbps}MB - {mes_servicio}",
+        "item_description": f"Servicio Internet {plan_details.speed_mbps}MB - {mes_servicio}",
         "base_amount": invoice.base_amount,
         "late_fee": invoice.late_fee,
         "total_paid": payment.amount,

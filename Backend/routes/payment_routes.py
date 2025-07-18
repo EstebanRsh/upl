@@ -93,15 +93,8 @@ def add_payment(
         db.flush()
         db.refresh(new_payment)
 
-        # --- INICIO DE LA MODIFICACIÓN ---
-        #
-        # Reemplazamos todo el bloque de código que preparaba el PDF
-        # con estas dos líneas mucho más limpias.
-        #
-        receipt_url = generate_payment_receipt(new_payment, invoice_to_pay)
+        receipt_url = generate_payment_receipt(new_payment, invoice_to_pay, db)
         invoice_to_pay.receipt_pdf_url = receipt_url
-        #
-        # --- FIN DE LA MODIFICACIÓN ---
 
         # Confirmar y responder
         db.commit()

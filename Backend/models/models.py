@@ -154,11 +154,13 @@ class BusinessSettings(Base):
     """Modelo de la tabla 'business_settings'. Almacena reglas de negocio configurables."""
 
     __tablename__ = "business_settings"
+
     id = Column(Integer, primary_key=True)
-    setting_name = Column(String, unique=True, nullable=False)
+    setting_name = Column(String, unique=True, nullable=False, index=True)
     setting_value = Column(String, nullable=False)
     description = Column(String, nullable=True)
 
+    # El constructor como en tus otras clases, para mantener la consistencia.
     def __init__(self, setting_name, setting_value, description=None):
         """Constructor para crear una instancia de BusinessSettings."""
         self.setting_name = setting_name

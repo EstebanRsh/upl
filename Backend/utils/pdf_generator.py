@@ -2,9 +2,11 @@ import datetime
 from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML, CSS
+from sqlalchemy.orm import Session
 from models.models import (
     Payment,
     Invoice,
+    BusinessSettings,
 )
 
 # --- CONSTANTES DE CONFIGURACIÓN ---
@@ -84,7 +86,7 @@ def create_invoice_pdf(invoice_data: dict) -> str:
     return str(full_path.as_posix())
 
 
-def generate_payment_receipt(payment: Payment, invoice: Invoice) -> str:
+def generate_payment_receipt(payment: Payment, invoice: Invoice, db: Session) -> str:
     """
     Prepara los datos de un pago y una factura, y llama a la función de creación de PDF.
 
@@ -98,6 +100,12 @@ def generate_payment_receipt(payment: Payment, invoice: Invoice) -> str:
     user_details = invoice.user.userdetail
     plan_details = invoice.subscription.plan
 
+    # En lugar de tenerlos escritos aquí, los consultamos.
+    settings_from_db = db.query(BusinessSettings).all()
+    # Convertimos la lista de objetos a un diccionario para un acceso más fácil
+    company_settings = {
+        setting.setting_name: setting.setting_value for setting in settings_from_db
+    }
     # Diccionario para traducir el número del mes a su nombre en español.
     meses_es = {
         1: "Enero",
@@ -121,10 +129,12 @@ def generate_payment_receipt(payment: Payment, invoice: Invoice) -> str:
     # Preparamos el diccionario de datos para pasarlo a la plantilla Jinja2.
     pdf_data = {
         "logo_path": get_logo_path(),
-        "company_name": "Up Link",  # Puedes mover esto a un archivo de config.
-        "company_address": "Av. San Martin 123, Bovril",
-        "company_dni": "CUIT: 30-12345678-9",
-        "company_contact": "Whatsapp: +54 9 3438 41-1490  | Email: uplink@gmail.com",
+        "company_name": company_settings.get("BUSINESS_NAME", "Nombre de Empresa"),
+        "company_address": company_settings.get(
+            "BUSINESS_ADDRESS", "Dirección de Empresa"
+        ),
+        "company_dni": company_settings.get("BUSINESS_CUIT", "CUIT de Empresa"),
+        "company_contact": f"Whatsapp: {company_settings.get('BUSINESS_PHONE', '')}  | Email: {company_settings.get('BUSINESS_EMAIL', '')}",
         "client_name": f"{user_details.firstname} {user_details.lastname}",
         "client_dni": f"DNI: {user_details.dni}",
         "client_address": user_details.address,

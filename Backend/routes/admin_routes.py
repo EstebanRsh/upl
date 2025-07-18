@@ -22,10 +22,12 @@ from models.models import (
     PaymentOut,
     PlanOut,
     UpdateUserRole,
+    BusinessSettings,
 )
 from sqlalchemy.orm import joinedload
 from auth.security import is_admin, Security
 from sqlalchemy.exc import IntegrityError
+from schemas.settings_schemas import Setting, SettingsUpdate
 
 admin_router = APIRouter()
 
@@ -171,3 +173,49 @@ def delete_user(
     return {
         "message": f"Usuario con ID {user_id} y todos sus datos han sido eliminados."
     }
+
+
+# Endpoint para OBTENER todas las configuraciones
+@admin_router.get(
+    "/settings",
+    response_model=list[Setting],
+    summary="Obtener configuraciones de la empresa",
+)
+def get_business_settings(
+    db: Session = Depends(get_db), current_user: dict = Depends(is_admin)
+):
+    settings = db.query(BusinessSettings).all()
+    return settings
+
+
+# Endpoint para ACTUALIZAR las configuraciones
+@admin_router.put(
+    "/settings", status_code=200, summary="Actualizar configuraciones de la empresa"
+)
+def update_business_settings(
+    update_data: SettingsUpdate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(is_admin),
+):
+    for setting_item in update_data.settings:
+        # Busca el registro en la BD
+        db_setting = (
+            db.query(BusinessSettings)
+            .filter(BusinessSettings.setting_name == setting_item.setting_name)
+            .first()
+        )
+
+        if db_setting:
+            # Si existe, lo actualiza
+            db_setting.setting_value = setting_item.setting_value
+        else:
+            # Si no existe, puedes decidir crearlo o lanzar un error
+            # Por ahora, lo crearemos para flexibilidad
+            new_setting = BusinessSettings(
+                setting_name=setting_item.setting_name,
+                setting_value=setting_item.setting_value,
+            )
+            db.add(new_setting)
+
+    db.commit()
+    return {"message": "Configuraciones actualizadas exitosamente"}

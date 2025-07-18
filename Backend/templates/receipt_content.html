@@ -1,0 +1,73 @@
+<header class="header">
+  <div class="company-logo">
+    {% if receipt.logo_path %}
+    <img src="{{ receipt.logo_path }}" alt="Logo de la empresa" class="logo" />
+    {% endif %}
+  </div>
+  <div class="company-details">
+    <p class="company-name">{{ receipt.company_name }}</p>
+    <p>{{ receipt.company_address }}</p>
+    <p><strong>{{ receipt.company_dni }}</strong></p>
+    <p>{{ receipt.company_contact }}</p>
+  </div>
+  <div class="receipt-title">RECIBO</div>
+</header>
+
+<section class="details-section">
+  <div class="client-info">
+    <h2>CLIENTE</h2>
+    <p><strong>{{ receipt.client_name }}</strong></p>
+    <p>{{ receipt.client_dni }}</p>
+    <p>{{ receipt.client_address }}</p>
+    <p>{{ receipt.client_phone }}</p>
+    <p>{{ receipt.client_email }}</p>
+  </div>
+  <div class="receipt-info">
+    <p><strong>RECIBO N°:</strong> {{ receipt.receipt_number }}</p>
+    <p><strong>FECHA DE PAGO:</strong> {{ receipt.payment_date }}</p>
+  </div>
+</section>
+
+<table class="items-table">
+  <thead>
+    <tr>
+      <th>Descripción</th>
+      <th class="text-right">Cantidad</th>
+      <th class="text-right">Precio Unit.</th>
+      <th class="text-right">Total</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>{{ receipt.item_description }}</td>
+      <td class="text-right">1</td>
+      <td class="text-right">{{ "%.2f €"|format(receipt.base_amount) }}</td>
+      <td class="text-right">{{ "%.2f €"|format(receipt.base_amount) }}</td>
+    </tr>
+    {% if receipt.late_fee > 0 %}
+    <tr>
+      <td>Recargo por mora</td>
+      <td class="text-right">1</td>
+      <td class="text-right">{{ "%.2f €"|format(receipt.late_fee) }}</td>
+      <td class="text-right">{{ "%.2f €"|format(receipt.late_fee) }}</td>
+    </tr>
+    {% endif %}
+  </tbody>
+  <tfoot>
+    <tr class="total-row">
+      <td colspan="2">MÉTODO DE PAGO: Efectivo</td>
+      <td class="text-right"><strong>TOTAL PAGADO</strong></td>
+      <td class="text-right">
+        <strong>{{ "%.2f €"|format(receipt.total_paid) }}</strong>
+      </td>
+    </tr>
+  </tfoot>
+</table>
+
+<footer class="footer">
+  <p><strong>Gracias por su pago.</strong></p>
+  <p>
+    Notas: Factura {{ receipt.receipt_number }}. Vence el {{ receipt.due_date
+    }}.
+  </p>
+</footer>

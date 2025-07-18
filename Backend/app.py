@@ -10,7 +10,7 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
+from fastapi.staticfiles import StaticFiles
 from config.db import Base, engine  # Modificado
 from routes.user_routes import user_router
 from routes.plan_routes import plan_router
@@ -19,9 +19,10 @@ from routes.subscription_routes import subscription_router
 from routes.admin_routes import admin_router
 from routes.token_routes import token_router
 from routes.billing_routes import billing_router
+from models import models
 
 # Crear las tablas en la base de datos
-# Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 
 # Metadatos para las "etiquetas" (tags). Mejora la documentación.
 tags_metadata = [
@@ -54,8 +55,11 @@ tags_metadata = [
         "description": "Endpoint para la renovación de tokens de acceso (refresh token).",
     },
 ]
+
+models.Base.metadata.create_all(bind=engine)
+
 app = FastAPI(
-    title="API de Gestión para ISP",
+    title="API de Gestión para UPL",
     description="""
 API para la gestión de clientes, planes, suscripciones y facturación de un Proveedor de Servicios de Internet (ISP). 🚀
 
@@ -89,7 +93,7 @@ app.include_router(user_router, prefix="/api", tags=["Usuarios"])
 app.include_router(plan_router, prefix="/api", tags=["Planes de Internet"])
 app.include_router(payment_router, prefix="/api", tags=["Pagos"])
 app.include_router(subscription_router, prefix="/api", tags=["Suscripciones"])
-app.include_router(admin_router, prefix="/api", tags=["Administración"])
+app.include_router(admin_router, prefix="/api/admin", tags=["Administración"])
 app.include_router(token_router, prefix="/api", tags=["Token"])
 app.include_router(billing_router, prefix="/api", tags=["Facturación"])
 
@@ -98,6 +102,8 @@ app.include_router(billing_router, prefix="/api", tags=["Facturación"])
 def read_root():
     return {"welcome": "Bienvenido a la API de ISP"}
 
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Comando para ejecutar la aplicación con Uvicorn.
 # 'uvicorn app:app' -> le dice a uvicorn que busque el objeto 'app' en el archivo 'app.py'.

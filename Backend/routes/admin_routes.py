@@ -33,7 +33,7 @@ admin_router = APIRouter()
 
 
 @admin_router.post(
-    "/admin/users/add",
+    "/users/add",
     status_code=status.HTTP_201_CREATED,
     summary="Crear un nuevo usuario",
     description="**Permisos requeridos: `administrador`**.<br>Registra un nuevo usuario (cliente) y sus detalles personales en el sistema.",
@@ -71,7 +71,7 @@ def add_user(user_data: InputUser, db: Session = Depends(get_db)):
 
 
 @admin_router.get(
-    "/admin/users/all",
+    "/users/all",
     response_model=PaginatedResponse[UserOut],
     summary="Obtener todos los usuarios",
     description="**Permisos requeridos: `administrador`**.<br>Obtiene una lista paginada y opcionalmente filtrada por nombre de todos los usuarios del sistema.",
@@ -122,7 +122,7 @@ def get_all_users(
 
 
 @admin_router.put(
-    "/admin/users/{user_id}/details",
+    "/users/{user_id}/details",
     summary="Actualizar detalles de un usuario",
     description="**Permisos requeridos: `administrador`**.<br>Permite a un administrador actualizar los detalles personales de cualquier cliente.",
 )
@@ -148,7 +148,7 @@ def update_user_details(
 
 
 @admin_router.delete(
-    "/admin/users/{user_id}",
+    "/users/{user_id}",
     summary="Eliminar un usuario",
     description="**Permisos requeridos: `administrador`**.<br>Elimina a un usuario y todos sus datos asociados en cascada. Un administrador no puede eliminarse a sí mismo.",
 )

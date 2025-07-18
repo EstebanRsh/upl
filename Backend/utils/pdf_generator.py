@@ -3,6 +3,7 @@ import datetime
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML, CSS
 from models.models import Payment, Invoice
+from pathlib import Path
 
 # Carpeta de plantillas
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "..", "templates")
@@ -117,19 +118,16 @@ def generate_receipt_number(payment_id, year):
 def generate_payment_receipt(payment: Payment, invoice: Invoice) -> str:
     """
     Prepara los datos, genera el PDF para un recibo de pago y devuelve la URL del archivo.
-
-    Args:
-        payment: El objeto Payment recién creado.
-        invoice: La factura que se ha pagado.
-
-    Returns:
-        La ruta relativa del archivo PDF generado.
     """
-    # 1. Preparar los datos para el PDF
+    # --- LÓGICA DEL LOGO SIMPLIFICADA ---
+    # En lugar de buscar en el disco, le damos la URL directa del logo.
+    # FastAPI se encargará de servirlo desde la carpeta 'static'.
+    logo_url = "/static/logo.png"
+
+    # --- El resto de la preparación de datos queda igual ---
     user_details = invoice.user.userdetail
     plan_details = invoice.subscription.plan
 
-    # Formatear el mes del servicio en español
     meses = {
         1: "Enero",
         2: "Febrero",
@@ -145,28 +143,15 @@ def generate_payment_receipt(payment: Payment, invoice: Invoice) -> str:
         12: "Diciembre",
     }
     mes_servicio = f"{meses[invoice.issue_date.month]} {invoice.issue_date.year}"
-
-    # Obtener la ruta absoluta del logo
-    logo_formats = ["logo.png", "logo.jpg", "logo.jpeg"]
-    logo_path = None
-    for logo_name in logo_formats:
-        potential_path = os.path.abspath(os.path.join("templates", logo_name))
-        if os.path.exists(potential_path):
-            logo_path = potential_path
-            break
-    if not logo_path:
-        print(
-            "Advertencia: No se encontró el logo de la empresa en la carpeta templates/"
-        )
-
-    # Formatear el número de recibo
     receipt_number = f"F{payment.payment_date.year}-{invoice.id:03d}"
 
     pdf_data = {
+        # Pasamos la URL del logo a la plantilla.
+        "logo_path": logo_url,
+        # El resto de los datos no cambia.
         "company_name": "NetSys Solutions",
         "company_address": "Calle Ficticia 123, Ciudad Ejemplo",
         "company_contact": "Tel: 900 123 456 | Email: contacto@netsys.com",
-        "logo_path": logo_path,
         "client_name": f"{user_details.firstname} {user_details.lastname}",
         "client_dni": user_details.dni,
         "client_address": user_details.address,
@@ -184,10 +169,10 @@ def generate_payment_receipt(payment: Payment, invoice: Invoice) -> str:
         "invoice_id": invoice.id,
     }
 
-    # 2. Llamar a la función que crea el PDF
+    # Esta llamada a la función que realmente crea el PDF no cambia.
     pdf_filename = create_invoice_pdf(pdf_data)
 
-    # 3. Construir y devolver la URL del recibo
+    # La construcción de la URL final tampoco cambia.
     receipt_url = os.path.join(
         str(payment.payment_date.year),
         f"{payment.payment_date.month:02d}",

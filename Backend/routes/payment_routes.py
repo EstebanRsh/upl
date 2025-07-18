@@ -39,26 +39,43 @@ payment_router = APIRouter()
     summary="Registrar un nuevo pago",
     description="**Permisos requeridos: `administrador`**.<br>Registra un pago para la factura pendiente más antigua de un usuario, la marca como pagada y genera un recibo en PDF con un sello de agua de imagen.",
 )
-@payment_router.post(
-    "/payments/add",
-    summary="Registrar un nuevo pago",
-    description="**Permisos requeridos: `administrador`**.<br>Registra un pago para la factura pendiente más antigua de un usuario, la marca como pagada y genera un recibo en PDF.",
-)
 def add_payment(
     payment_data: InputPayment,
     admin_user: dict = Depends(is_admin),
     db: Session = Depends(get_db),
 ):
     try:
-        # 1. Buscar la factura pendiente más antigua
+        # 1. Buscar la suscripción que corresponde al usuario y al plan del pago.
+        #    Esto nos permite identificar exactamente qué servicio se está pagando.
+        subscription = (
+            db.query(Subscription)
+            .filter(
+                Subscription.user_id == payment_data.user_id,
+                Subscription.plan_id == payment_data.plan_id,
+            )
+            .first()
+        )
+
+        # Si no se encuentra una suscripción, no se puede continuar.
+        if not subscription:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "message": "No se encontró una suscripción para este usuario y plan."
+                },
+            )
+
+        # 2. Ahora, buscar la factura pendiente que pertenece a ESA suscripción específica.
         invoice_to_pay = (
             db.query(Invoice)
-            .join(User, Invoice.user_id == User.id)
-            .options(
+            .filter(
+                Invoice.subscription_id == subscription.id,
+                Invoice.status == "pending",
+            )
+            .options(  # Estos joins los mantenemos para poder generar el PDF después
                 joinedload(Invoice.user).joinedload(User.userdetail),
                 joinedload(Invoice.subscription).joinedload(Subscription.plan),
             )
-            .filter(User.id == payment_data.user_id, Invoice.status == "pending")
             .order_by(Invoice.issue_date)
             .first()
         )
@@ -66,9 +83,10 @@ def add_payment(
         if not invoice_to_pay:
             return JSONResponse(
                 status_code=404,
-                content={"message": "No se encontró una factura pendiente."},
+                content={
+                    "message": "No se encontró una factura pendiente para esta suscripción."
+                },
             )
-
         # 2. Actualizar estado y crear el pago
         invoice_to_pay.status = "paid"
         new_payment = Payment(

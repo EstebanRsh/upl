@@ -50,7 +50,11 @@ def test_cannot_add_payment_for_non_existent_user(
     payment_data = {"user_id": 9999, "plan_id": 1, "amount": 100}
     response = admin_auth_client.post("/api/payments/add", json=payment_data)
     assert response.status_code == 404
-    assert "No se encontró una factura pendiente" in response.json()["message"]
+    # Actualizamos el mensaje esperado para que coincida con la nueva lógica
+    assert (
+        "No se encontró una suscripción para este usuario y plan"
+        in response.json()["message"]
+    )
 
 
 def test_cannot_add_payment_if_no_pending_invoice(

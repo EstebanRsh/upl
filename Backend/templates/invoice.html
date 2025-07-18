@@ -15,8 +15,8 @@
         </div>
         <div class="company-details">
           <p class="company-name">{{ company_name }}</p>
-          <p>{{ company_address }}</p>
-          <p><strong>{{ company_dni }}</strong></p>
+          <p>Dirección: {{ company_address }}, {{ company_city }}</p>
+          <p><strong>CUIT: {{ company_dni }}</strong></p>
           <p>{{ company_contact }}</p>
         </div>
         <div class="receipt-title">RECIBO</div>
@@ -25,11 +25,22 @@
       <section class="details-section">
         <div class="client-info">
           <h2>CLIENTE</h2>
-          <p><strong>{{ client_name }}</strong></p>
-          <p>{{ client_dni }}</p>
-          <p>{{ client_address }}</p>
-          <p>{{ client_phone }}</p>
-          <p>{{ client_email }}</p>
+          <p><strong>Nombre y Apellido:</strong> {{ client_name }}</p>
+          <p><strong>Domicilio:</strong> {{ client_address }}</p>
+
+          {% if client_barrio or client_city %}
+          <p>
+            {% if client_barrio %}
+            <strong>Barrio:</strong> {{ client_barrio }} {% endif %} {% if
+            client_barrio and client_city %} | {% endif %} {% if client_city %}
+            <strong>Localidad:</strong> {{ client_city }} {% endif %}
+          </p>
+          {% endif %}
+
+          <p>
+            <strong>DNI:</strong> {{ client_dni }} {% if client_phone %} |
+            <strong>Teléfono:</strong> {{ client_phone }} {% endif %}
+          </p>
         </div>
         <div class="receipt-info">
           <p><strong>RECIBO N°:</strong> {{ receipt_number }}</p>
@@ -74,8 +85,8 @@
       </table>
 
       <footer class="footer">
-        <p><strong>Gracias por su pago.</strong></p>
-        <p>Notas: Factura {{ receipt_number }}. Vence el {{ due_date }}.</p>
+        <strong>Gracias por su pago.</strong> - Notas: Factura {{ receipt_number
+        }}. Vence el {{ due_date }}.
       </footer>
     </div>
   </body>

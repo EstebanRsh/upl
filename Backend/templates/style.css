@@ -1,64 +1,34 @@
 @page {
   size: A4;
-  margin: 0; /* Quitamos el margen de la página para controlar el espacio nosotros */
+  margin: 1cm;
 }
 
 body {
   font-family: "Segoe UI", "Roboto", "Helvetica Neue", "Arial", sans-serif;
   font-size: 9pt;
   color: #333;
-  background-color: #f7f7f7; /* Un fondo muy sutil para la vista en pantalla */
+  background-color: #fff;
   margin: 0;
   padding: 0;
 }
 
-/* Contenedor para el primer recibo en la mitad superior de la hoja */
-.receipt-wrapper {
-  width: 210mm; /* Ancho de A4 */
-  height: 148.5mm; /* Altura exacta de media hoja A4 */
-  padding: 1cm;
-  box-sizing: border-box;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-/* Este es el recibo en sí, con sombra y bordes redondeados */
 .receipt-container {
   width: 100%;
-  height: 100%;
+  min-height: 14cm;
   background-color: #fff;
-  border-radius: 8px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-  padding: 20px;
+  padding: 0;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  position: relative; /* Para posicionar elementos 'absolute' adentro */
-  overflow: hidden; /* Para que los elementos decorativos no se salgan */
-}
-
-/* Círculo decorativo en la esquina */
-.receipt-container::before {
-  content: "";
-  position: absolute;
-  top: -50px;
-  right: -50px;
-  width: 150px;
-  height: 150px;
-  background-color: #007bff; /* Color de acento principal */
-  border-radius: 50%;
-  opacity: 0.1;
 }
 
 .header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  border-bottom: 2px solid #007bff; /* Usamos el color de acento */
+  border-bottom: 2px solid #007bff;
   padding-bottom: 10px;
   margin-bottom: 20px;
-  z-index: 10; /* Para que esté por encima del círculo decorativo */
 }
 
 .company-logo .logo {
@@ -72,20 +42,19 @@ body {
 
 .company-name {
   font-size: 1.6em;
-  font-weight: 600; /* Un poco más de peso */
+  font-weight: 600;
   color: #007bff;
   margin: 0;
 }
 
 .receipt-title {
-  display: none; /* El título "RECIBO" lo manejaremos diferente */
+  display: none;
 }
 
 .details-section {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 25px;
-  z-index: 10;
+  margin-bottom: 20px;
 }
 
 .client-info h2 {
@@ -104,12 +73,11 @@ body {
 .items-table {
   width: 100%;
   border-collapse: collapse;
-  margin-bottom: 20px;
-  flex-grow: 1;
+  margin-bottom: 0;
 }
 
 .items-table th {
-  background-color: #f2f8ff; /* Un azul muy claro */
+  background-color: #f2f8ff;
   color: #007bff;
   font-weight: 600;
   text-align: left;
@@ -119,11 +87,11 @@ body {
 
 .items-table td {
   padding: 12px;
-  border-bottom: 1px solid #f0f0f0; /* Líneas más sutiles */
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .items-table tr:last-child td {
-  border-bottom: none; /* Sin borde en la última fila */
+  border-bottom: none;
 }
 
 .items-table .text-right {
@@ -131,34 +99,16 @@ body {
 }
 
 .items-table tfoot .total-row td {
-  border-top: 3px double #333; /* Un separador más elegante */
+  border-top: 2px solid #333;
   font-weight: bold;
   font-size: 1.1em;
   color: #000;
 }
 
-/* Un sello de "PAGADO" muy visual */
-.paid-stamp {
-  position: absolute;
-  top: 90px;
-  right: 110px;
-  transform: rotate(-15deg);
-  font-size: 2.5em;
-  font-weight: 700;
-  color: #28a745; /* Verde de "pagado" */
-  border: 5px solid #28a745;
-  padding: 5px 15px;
-  border-radius: 10px;
-  opacity: 0.3;
-  z-index: 1;
-}
-
+/* Estilo final del footer: ahora sí, centrado */
 .footer {
-  margin-top: auto;
-  padding-top: 10px;
-  border-top: 1px solid #eee;
   text-align: center;
-  font-size: 8pt;
-  color: #777;
-  z-index: 10;
+  padding-top: 20px;
+  font-size: 9pt;
+  color: #333;
 }

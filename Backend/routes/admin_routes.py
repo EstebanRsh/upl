@@ -49,6 +49,9 @@ def add_user(user_data: InputUser, db: Session = Depends(get_db)):
             lastname=user_data.lastname,
             address=user_data.address,
             phone=user_data.phone,
+            city=user_data.city,
+            barrio=user_data.barrio,
+            phone2=user_data.phone2,
         )
         hashed_password = Security.get_password_hash(user_data.password)
         new_user = User(

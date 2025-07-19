@@ -6,11 +6,19 @@
 import logging
 import datetime
 import os
-from fastapi import APIRouter, Depends, HTTPException, status
+import math
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import FileResponse
 from sqlalchemy import extract
 from sqlalchemy.orm import Session
-from models.models import BusinessSettings, Setting, Subscription, Invoice
+from models.models import (
+    BusinessSettings,
+    Setting,
+    Subscription,
+    Invoice,
+    InvoiceOut,
+    PaginatedResponse,
+)
 from auth.security import is_admin, get_current_user
 from config.db import get_db
 
@@ -243,3 +251,45 @@ def process_overdue_invoices(
             f"Error inesperado en process_overdue_invoices: {e}", exc_info=True
         )
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
+
+
+@billing_router.get(
+    "/users/me/invoices",
+    response_model=PaginatedResponse[InvoiceOut],
+    summary="Consultar mi historial de facturas",
+    description="**Permisos requeridos: `autenticado`**.<br>Devuelve una lista paginada de todas las facturas del usuario.",
+    tags=["Cliente"],
+)
+def get_my_invoices(
+    page: int = Query(1, ge=1),
+    size: int = Query(10, ge=1, le=100),
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user_id = current_user.get("user_id")
+    logger.info(
+        f"Usuario ID {user_id} solicitando su historial de facturas (Página: {page})."
+    )
+    try:
+        query = (
+            db.query(Invoice)
+            .filter(Invoice.user_id == user_id)
+            .order_by(Invoice.issue_date.desc())
+        )
+
+        total_items = query.count()
+        offset = (page - 1) * size
+        invoices_query = query.offset(offset).limit(size).all()
+        total_pages = math.ceil(total_items / size)
+
+        return PaginatedResponse(
+            total_items=total_items,
+            total_pages=total_pages,
+            current_page=page,
+            items=invoices_query,
+        )
+    except Exception as e:
+        logger.error(
+            f"Error al obtener facturas para usuario ID {user_id}: {e}", exc_info=True
+        )
+        raise HTTPException(status_code=500, detail="Error al obtener tus facturas.")

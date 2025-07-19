@@ -1,7 +1,3 @@
-2025-07-19 10:07:55,259 - INFO - [app]: La aplicación se está apagando.
-2025-07-19 10:12:28,048 - INFO - [root]: El sistema de logging ha sido configurado.
-2025-07-19 10:12:28,114 - INFO - [app]: La aplicación se ha iniciado.
-2025-07-19 10:12:37,249 - INFO - [routes.payment_routes]: Admin 'Admin' ha iniciado el registro de un pago para el usuario ID 24.
-2025-07-19 10:12:37,249 - INFO - [services.payment_service]: Iniciando procesamiento de pago para usuario ID: 24.
-2025-07-19 10:12:37,264 - WARNING - [services.payment_service]: No se encontró suscripción para usuario 24 y plan 1.
-2025-07-19 10:12:45,208 - INFO - [app]: La aplicación se está apagando.
+2025-07-19 11:23:25,892 - INFO - [root]: El sistema de logging ha sido configurado.
+2025-07-19 11:23:25,953 - INFO - [app]: La aplicación se ha iniciado.
+2025-07-19 11:23:28,696 - INFO - [app]: La aplicación se está apagando.

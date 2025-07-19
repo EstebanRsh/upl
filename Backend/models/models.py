@@ -2,7 +2,7 @@
 # -----------------------------------------------------------------------------
 # DEFINICIÓN DE MODELOS DE DATOS
 # -----------------------------------------------------------------------------
-# ... (la descripción no cambia) ...
+#
 # -----------------------------------------------------------------------------
 
 # Importaciones necesarias de SQLAlchemy, Pydantic y tipos de Python.
@@ -12,8 +12,6 @@ from sqlalchemy.orm import sessionmaker, relationship
 from pydantic import BaseModel, EmailStr, Field
 import datetime
 from typing import List, TypeVar, Generic
-
-# ¡NUEVA IMPORTACIÓN! Se añaden las constantes.
 from core.constants import (
     USER_ROLE_CLIENT,
     SUBSCRIPTION_STATUS_ACTIVE,
@@ -32,11 +30,10 @@ class User(Base):
     __tablename__ = "users"
     id = Column("id", Integer, primary_key=True)
     username = Column(String(50), nullable=False, unique=True)
-    password = Column("password", String)
-    email = Column("email", String(80), nullable=False, unique=True)
+    password = Column("password", String, nullable=False)
+    email = Column("email", String(80), unique=True, nullable=True)
     id_userdetail = Column(Integer, ForeignKey("userdetails.id"))
-    # --- MODIFICADO ---
-    role = Column("role", String, default=USER_ROLE_CLIENT)
+    role = Column("role", String, default="cliente", nullable=False)
     refresh_token = Column("refresh_token", String, nullable=True)
 
     # ... (las relaciones no cambian) ...
@@ -58,7 +55,7 @@ class User(Base):
     )
 
     # --- MODIFICADO ---
-    def __init__(self, username, password, email, role=USER_ROLE_CLIENT):
+    def __init__(self, username, password, email=None, role=USER_ROLE_CLIENT):
         """Constructor para crear una instancia de User."""
         self.username = username
         self.password = password
@@ -72,13 +69,13 @@ class UserDetail(Base):
 
     __tablename__ = "userdetails"
     id = Column("id", Integer, primary_key=True)
-    dni = Column("dni", Integer, unique=True)
-    firstname = Column("firstname", String)
-    lastname = Column("lastname", String)
-    address = Column("address", String)
+    dni = Column("dni", Integer, unique=True, nullable=False)
+    firstname = Column("firstname", String, nullable=False)
+    lastname = Column("lastname", String, nullable=False)
+    address = Column("address", String, nullable=True)
     barrio = Column("barrio", String, nullable=True)
     city = Column("city", String, nullable=True)
-    phone = Column("phone", String)
+    phone = Column("phone", String, nullable=True)
     phone2 = Column("phone2", String, nullable=True)
     user = relationship("User", back_populates="userdetail")
 
@@ -87,8 +84,8 @@ class UserDetail(Base):
         dni,
         firstname,
         lastname,
-        address,
-        phone,
+        address=None,
+        phone=None,
         city=None,
         barrio=None,
         phone2=None,
@@ -203,17 +200,15 @@ class Invoice(Base):
         self.total_amount = total_amount
 
 
-# --- Modelos de Entrada (Pydantic) ---
-# ... (Las clases InputUser, InputLogin, InputPlan, InputPayment, InputSubscription no cambian) ...
 class InputUser(BaseModel):
     username: str
     password: str
-    email: EmailStr
     dni: int
     firstname: str
     lastname: str
-    address: str
-    phone: str
+    email: EmailStr | None = None
+    address: str | None = None
+    phone: str | None = None
     city: str | None = None
     barrio: str | None = None
     phone2: str | None = None
@@ -274,8 +269,26 @@ class UpdateUserRole(BaseModel):
     role: str
 
 
+class UpdateMyDetails(BaseModel):
+    """Schema para que un usuario actualice sus propios detalles (no el DNI)."""
+
+    firstname: str | None = None
+    lastname: str | None = None
+    address: str | None = None
+    barrio: str | None = None
+    city: str | None = None
+    phone: str | None = None
+    phone2: str | None = None
+
+
+class UpdateMyPassword(BaseModel):
+    """Schema para que un usuario cambie su contraseña."""
+
+    current_password: str
+    new_password: str = Field(..., min_length=8)
+
+
 # --- Modelos de Respuesta (Pydantic) ---
-# ... (Las clases PaginatedResponse, UserOut, PlanOut, PaymentOut, SubscriptionOut, Setting no cambian) ...
 class PaginatedResponse(BaseModel, Generic[T]):
     total_items: int
     total_pages: int
@@ -322,3 +335,20 @@ class Setting(BaseModel):
     setting_name: str
     setting_value: str
     description: str | None = None
+
+
+class InvoiceOut(BaseModel):
+    """Schema de respuesta para una factura, sin datos del usuario."""
+
+    id: int
+    issue_date: datetime.datetime
+    due_date: datetime.datetime
+    base_amount: float
+    late_fee: float
+    total_amount: float
+    status: str
+    receipt_pdf_url: str | None = None
+
+    class Config:
+        # Esto permite que Pydantic lea los datos desde un objeto de SQLAlchemy
+        from_attributes = True  # En Pydantic v1 era orm_mode = True

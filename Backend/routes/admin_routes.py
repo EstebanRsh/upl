@@ -312,3 +312,31 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=500, detail="Error interno al generar las estadísticas."
         )
+
+
+@admin_router.put(
+    "/settings/billing/automation",
+    summary="Activa o desactiva la facturación automática",
+    dependencies=[Depends(has_permission("roles:manage"))],
+)
+def set_billing_automation(is_enabled: bool, db: Session = Depends(get_db)):
+    setting_name = "auto_invoicing_enabled"
+    logger.info(f"Cambiando el estado de la facturación automática a: {is_enabled}.")
+
+    setting = db.query(BusinessSettings).filter_by(setting_name=setting_name).first()
+
+    if setting:
+        setting.setting_value = str(is_enabled).lower()
+    else:
+        new_setting = BusinessSettings(
+            setting_name=setting_name,
+            setting_value=str(is_enabled).lower(),
+            description="Controla si la generación de facturas se ejecuta automáticamente cada mes.",
+        )
+        db.add(new_setting)
+
+    db.commit()
+
+    return {
+        "message": f"Facturación automática {'activada' if is_enabled else 'desactivada'}."
+    }

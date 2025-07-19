@@ -9,9 +9,13 @@
 # -----------------------------------------------------------------------------
 
 from fastapi import FastAPI
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from config.db import Base, engine  # Modificado
+from config.db import Base, engine
+from sqlalchemy.orm import Session
+from config.db import SessionLocal
 from routes.user_routes import user_router
 from routes.plan_routes import plan_router
 from routes.payment_routes import payment_router
@@ -23,6 +27,7 @@ from routes.role_routes import role_router
 from models import models
 import logging
 from core.logging_config import setup_logging
+from routes.billing_routes import generate_monthly_invoices_job
 
 # Llama a la función para configurar el logging al inicio de la app.
 setup_logging()
@@ -79,18 +84,44 @@ API para la gestión de clientes, planes, suscripciones y facturación de un Pro
     openapi_tags=tags_metadata,
 )
 logger = logging.getLogger(__name__)
+scheduler = AsyncIOScheduler()
 
 
+def get_db_for_job():
+    """Función para obtener una sesión de BD para las tareas programadas."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+# Eventos de inicio y apagado de la aplicación
 @app.on_event("startup")
 async def startup_event():
     """Evento que se ejecuta al iniciar la aplicación."""
     logger.info("La aplicación se ha iniciado.")
 
+    # Iniciar el programador
+    scheduler.start()
+
+    # Añadir la tarea de facturación mensual
+    scheduler.add_job(
+        generate_monthly_invoices_job,
+        trigger=CronTrigger(day=1, hour=2, minute=0),
+        id="monthly_invoicing_job",
+        name="Generación de Facturas Mensuales",
+        replace_existing=True,
+        args=[next(get_db_for_job())],
+    )
+    logger.info("Tarea de facturación mensual programada.")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Evento que se ejecuta al apagar la aplicación."""
     logger.info("La aplicación se está apagando.")
+    # Detener el programador
+    scheduler.shutdown()
 
 
 origins = [

@@ -2,7 +2,6 @@
 # -----------------------------------------------------------------------------
 # RUTAS DE FACTURACIÓN Y REGLAS DE NEGOCIO
 # -----------------------------------------------------------------------------
-# routes/billing_routes.py
 import logging
 import datetime
 import os
@@ -24,6 +23,115 @@ from config.db import get_db
 
 logger = logging.getLogger(__name__)
 billing_router = APIRouter()
+
+# -----------------------------------------------------------------------------
+# LÓGICA DE NEGOCIO (Separada para poder reutilizarla)
+# -----------------------------------------------------------------------------
+
+
+def generate_monthly_invoices_logic(db: Session):
+    """
+    Contiene la lógica principal para generar facturas.
+    Puede ser llamada por un job automático o un endpoint manual.
+    """
+    logger.info("Iniciando la lógica de generación de facturas mensuales.")
+
+    # 1. Comprobar si la automatización está activada
+    automation_setting = (
+        db.query(BusinessSettings)
+        .filter_by(setting_name="auto_invoicing_enabled")
+        .first()
+    )
+    if automation_setting and automation_setting.setting_value.lower() != "true":
+        logger.info(
+            "La generación automática de facturas está desactivada. Omitiendo tarea."
+        )
+        return {
+            "message": "Proceso omitido. La facturación automática está desactivada.",
+            "facturas_generadas": 0,
+            "facturas_omitidas": 0,
+        }
+
+    # 2. Lógica de generación de facturas
+    payment_window_setting = (
+        db.query(BusinessSettings).filter_by(setting_name="payment_window_days").first()
+    )
+    if not payment_window_setting:
+        logger.error("La regla 'payment_window_days' no está configurada.")
+        return {"error": "La regla 'payment_window_days' no está configurada."}
+
+    payment_window_days = int(payment_window_setting.setting_value)
+    active_subscriptions = db.query(Subscription).filter_by(status="active").all()
+    generated_count, skipped_count = 0, 0
+    today = datetime.date.today()
+
+    for sub in active_subscriptions:
+        if (
+            db.query(Invoice)
+            .filter(
+                Invoice.subscription_id == sub.id,
+                extract("month", Invoice.issue_date) == today.month,
+                extract("year", Invoice.issue_date) == today.year,
+            )
+            .first()
+        ):
+            skipped_count += 1
+            continue
+
+        new_invoice = Invoice(
+            user_id=sub.user_id,
+            subscription_id=sub.id,
+            due_date=today + datetime.timedelta(days=payment_window_days),
+            base_amount=sub.plan.price,
+            total_amount=sub.plan.price,
+        )
+        db.add(new_invoice)
+        generated_count += 1
+
+    db.commit()
+    logger.info(
+        f"Facturación completada. Generadas: {generated_count}, Omitidas: {skipped_count}."
+    )
+    return {
+        "message": "Proceso completado.",
+        "facturas_generadas": generated_count,
+        "facturas_omitidas_por_duplicado": skipped_count,
+    }
+
+
+# -----------------------------------------------------------------------------
+# TAREA y ENDPOINTS
+# -----------------------------------------------------------------------------
+
+
+def generate_monthly_invoices_job(db: Session):
+    """
+    Esta es la función que el scheduler de app.py llamará.
+    """
+    logger.info("Ejecutando TAREA PROGRAMADA: Generación de facturas mensuales.")
+    try:
+        generate_monthly_invoices_logic(db)
+    except Exception as e:
+        logger.error(f"Error en la tarea programada de facturación: {e}", exc_info=True)
+    finally:
+        db.close()
+    logger.info("Tarea programada de facturación finalizada.")
+
+
+@billing_router.post(
+    "/admin/invoices/generate-monthly",
+    summary="Generar facturas mensuales manualmente",
+    dependencies=[Depends(has_permission("billing:generate_invoices"))],
+)
+def generate_monthly_invoices_manual(db: Session = Depends(get_db)):
+    """
+    Endpoint para que un administrador ejecute la facturación manualmente.
+    """
+    logger.info("Invocación MANUAL de la generación de facturas.")
+    result = generate_monthly_invoices_logic(db)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
 
 
 @billing_router.post(
@@ -50,76 +158,12 @@ def set_business_setting(setting_data: Setting, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
 
-@billing_router.post(
-    "/admin/invoices/generate-monthly",
-    dependencies=[Depends(has_permission("billing:generate_invoices"))],
-)
-def generate_monthly_invoices(db: Session = Depends(get_db)):
-    logger.info("Iniciando la generación de facturas mensuales.")
-    try:
-        payment_window_setting = (
-            db.query(BusinessSettings)
-            .filter_by(setting_name="payment_window_days")
-            .first()
-        )
-        if not payment_window_setting:
-            raise HTTPException(
-                status_code=400,
-                detail="La regla 'payment_window_days' no está configurada.",
-            )
-
-        payment_window_days = int(payment_window_setting.setting_value)
-        active_subscriptions = db.query(Subscription).filter_by(status="active").all()
-        generated_count, skipped_count = 0, 0
-        today = datetime.date.today()
-
-        for sub in active_subscriptions:
-            if (
-                db.query(Invoice)
-                .filter_by(
-                    subscription_id=sub.id,
-                    issue_date_month=today.month,
-                    issue_date_year=today.year,
-                )
-                .first()
-            ):
-                skipped_count += 1
-                continue
-
-            new_invoice = Invoice(
-                user_id=sub.user_id,
-                subscription_id=sub.id,
-                due_date=today + datetime.timedelta(days=payment_window_days),
-                base_amount=sub.plan.price,
-                total_amount=sub.plan.price,
-            )
-            db.add(new_invoice)
-            generated_count += 1
-
-        db.commit()
-        logger.info(
-            f"Facturación completada. Generadas: {generated_count}, Omitidas: {skipped_count}."
-        )
-        return {
-            "message": "Proceso completado.",
-            "facturas_generadas": generated_count,
-            "facturas_omitidas": skipped_count,
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error en generate_monthly_invoices: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error interno del servidor.")
-
-
 @billing_router.get("/invoices/{invoice_id}/download")
 def download_invoice_pdf(
     invoice_id: int,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # Esta ruta no cambia, ya que su lógica de permisos es correcta
     logger.info(
         f"Usuario '{current_user.get('sub')}' solicitando descarga de factura ID: {invoice_id}."
     )
@@ -129,7 +173,7 @@ def download_invoice_pdf(
             raise HTTPException(status_code=404, detail="Factura no encontrada")
 
         user_has_permission = (
-            current_user.get("role") == "Super Administrador"
+            "users:read_all" in current_user.get("permissions", set())
             or current_user.get("user_id") == invoice.user_id
         )
         if not user_has_permission:
@@ -220,7 +264,6 @@ def get_my_invoices(
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # Esta ruta no cambia
     user_id = current_user.get("user_id")
     logger.info(
         f"Usuario ID {user_id} solicitando historial de facturas (Página: {page})."

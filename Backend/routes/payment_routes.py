@@ -3,8 +3,8 @@
 # RUTAS DE GESTIÓN DE PAGOS
 # -----------------------------------------------------------------------------
 import logging
-import os
 import math
+import os
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload
@@ -18,97 +18,70 @@ from models.models import (
     Subscription,
 )
 from auth.security import get_current_user, is_admin
-from utils.pdf_generator import generate_payment_receipt
 from config.db import get_db
+
+# ¡NUEVA IMPORTACIÓN! Importamos el servicio y la excepción personalizada.
+from services.payment_service import process_new_payment, PaymentException
 
 logger = logging.getLogger(__name__)
 payment_router = APIRouter()
 
 
-@payment_router.post("/payments/add", status_code=status.HTTP_201_CREATED)
+@payment_router.post(
+    "/payments/add",
+    summary="Registrar un nuevo pago",
+    description="**Permisos requeridos: `administrador`**.",
+    status_code=status.HTTP_201_CREATED,
+)
 def add_payment(
     payment_data: InputPayment,
     admin_user: dict = Depends(is_admin),
     db: Session = Depends(get_db),
 ):
+    """
+    Ruta para registrar un nuevo pago. Delega la lógica de negocio al servicio de pagos.
+    """
     logger.info(
-        f"Admin '{admin_user.get('sub')}' registrando pago para usuario ID: {payment_data.user_id}."
+        f"Admin '{admin_user.get('sub')}' ha iniciado el registro de un pago para el usuario ID {payment_data.user_id}."
     )
     try:
-        # ... (lógica sin cambios) ...
-        subscription = (
-            db.query(Subscription)
-            .filter(
-                Subscription.user_id == payment_data.user_id,
-                Subscription.plan_id == payment_data.plan_id,
-            )
-            .first()
-        )
-        if not subscription:
-            logger.warning(
-                f"No se encontró suscripción para usuario {payment_data.user_id} y plan {payment_data.plan_id}."
-            )
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No se encontró una suscripción para este usuario y plan.",
-            )
-        invoice_to_pay = (
-            db.query(Invoice)
-            .filter(
-                Invoice.subscription_id == subscription.id, Invoice.status == "pending"
-            )
-            .options(
-                joinedload(Invoice.user).joinedload(User.userdetail),
-                joinedload(Invoice.subscription).joinedload(Subscription.plan),
-            )
-            .order_by(Invoice.issue_date)
-            .first()
-        )
-        if not invoice_to_pay:
-            logger.warning(
-                f"No se encontró factura pendiente para la suscripción ID: {subscription.id}."
-            )
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No se encontró una factura pendiente para esta suscripción.",
-            )
-        invoice_to_pay.status = "paid"
-        new_payment = Payment(
-            user_id=payment_data.user_id,
-            amount=payment_data.amount,
-            invoice_id=invoice_to_pay.id,
-        )
-        db.add(new_payment)
-        db.flush()
-        db.refresh(new_payment)
-        receipt_url = generate_payment_receipt(new_payment, invoice_to_pay, db)
-        invoice_to_pay.receipt_pdf_url = receipt_url
+        # 1. La ruta ahora solo llama al servicio con los datos.
+        result = process_new_payment(payment_data, db)
+
+        # 2. Si el servicio se ejecuta sin errores, confirmamos la transacción.
         db.commit()
+
         logger.info(
-            f"Pago para factura ID {invoice_to_pay.id} confirmado exitosamente."
+            f"Pago para usuario ID {payment_data.user_id} procesado y confirmado exitosamente."
         )
-        return JSONResponse(
-            status_code=status.HTTP_201_CREATED,
-            content={
-                "message": "Pago registrado exitosamente.",
-                "receipt_number": f"F{new_payment.payment_date.year}-{invoice_to_pay.id:03d}",
-                "pdf_filename": os.path.basename(receipt_url),
-                "total_paid": new_payment.amount,
-            },
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
+        return JSONResponse(status_code=status.HTTP_201_CREATED, content=result)
+
+    except PaymentException as e:
+        # 3. Capturamos nuestros errores de negocio personalizados.
         db.rollback()
-        logger.error(f"Error inesperado en add_payment: {e}", exc_info=True)
+        # El logger ya registró el warning dentro del servicio, no necesitamos duplicarlo.
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
+    except HTTPException:
+        # Dejamos pasar otras HTTPExceptions sin registrarlas como error grave.
+        raise
+
+    except Exception as e:
+        # 4. Capturamos cualquier otro error inesperado.
+        db.rollback()
+        logger.error(f"Error inesperado en la ruta add_payment: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Ocurrió un error interno al procesar el pago.",
         )
 
 
+# La ruta get_user_payments no necesita refactorización por ahora,
+# así que la dejamos como estaba, pero con el manejo de excepciones mejorado.
 @payment_router.get(
-    "/users/{user_id}/payments", response_model=PaginatedResponse[PaymentOut]
+    "/users/{user_id}/payments",
+    response_model=PaginatedResponse[PaymentOut],
+    summary="Consultar historial de pagos de un usuario",
 )
 def get_user_payments(
     user_id: int,
@@ -121,7 +94,6 @@ def get_user_payments(
         f"Usuario '{current_user.get('sub')}' solicitando historial de pagos para el usuario ID: {user_id}."
     )
     try:
-        # ... (lógica de permisos sin cambios) ...
         token_user_id = current_user.get("user_id")
         token_user_role = current_user.get("role")
         if token_user_role != "administrador" and token_user_id != user_id:
@@ -130,7 +102,7 @@ def get_user_payments(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tienes permiso para ver los pagos de otro usuario.",
             )
-        # ... (lógica de consulta sin cambios) ...
+
         offset = (page - 1) * size
         payments_query = (
             db.query(Payment)
@@ -142,6 +114,7 @@ def get_user_payments(
             return PaginatedResponse(
                 total_items=0, total_pages=0, current_page=page, items=[]
             )
+
         payments = (
             payments_query.options(
                 joinedload(Payment.invoice).joinedload(Invoice.subscription)
@@ -165,6 +138,7 @@ def get_user_payments(
             )
             for p in payments
         ]
+
         return PaginatedResponse(
             total_items=total_items,
             total_pages=total_pages,

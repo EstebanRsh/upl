@@ -8,17 +8,25 @@ import math
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import func, extract
+from datetime import datetime
 from sqlalchemy.exc import IntegrityError
 from config.db import get_db
 from auth.security import is_admin, Security
 from models.models import (
     User,
     UserDetail,
+    Subscription,
+    Invoice,
+    Payment,
+    DashboardStats,
     InputUser,
     UpdateUserDetail,
     PaginatedResponse,
     UserOut,
     BusinessSettings,
+    ClientStatusSummary,
+    InvoiceStatusSummary,
 )
 from schemas.settings_schemas import Setting, SettingsUpdate
 
@@ -246,4 +254,107 @@ def update_business_settings(
         )
         raise HTTPException(
             status_code=500, detail="Error al actualizar las configuraciones."
+        )
+
+
+@admin_router.get(
+    "/dashboard",
+    response_model=DashboardStats,
+    summary="Obtener estadísticas del panel de control",
+    description="**Permisos requeridos: `administrador`**.<br>Devuelve un resumen de las métricas clave del negocio.",
+)
+def get_dashboard_stats(
+    admin_user: dict = Depends(is_admin),
+    db: Session = Depends(get_db),
+):
+    logger.info(
+        f"Admin '{admin_user.get('sub')}' solicitando estadísticas del panel de control."
+    )
+    try:
+        now = datetime.utcnow()
+        current_month = now.month
+        current_year = now.year
+
+        # 1. Resumen de Clientes
+        active_clients = (
+            db.query(Subscription)
+            .filter(Subscription.status == "active")
+            .distinct(Subscription.user_id)
+            .count()
+        )
+        suspended_clients = (
+            db.query(Subscription)
+            .filter(Subscription.status == "suspended")
+            .distinct(Subscription.user_id)
+            .count()
+        )
+        total_clients = db.query(User).filter(User.role == "cliente").count()
+
+        client_summary = ClientStatusSummary(
+            active_clients=active_clients,
+            suspended_clients=suspended_clients,
+            total_clients=total_clients,
+        )
+        logger.info("Estadísticas de clientes calculadas.")
+
+        # 2. Resumen de Facturas
+        pending_invoices = (
+            db.query(Invoice)
+            .filter(Invoice.status == "pending", Invoice.due_date >= now.date())
+            .count()
+        )
+        paid_invoices = db.query(Invoice).filter(Invoice.status == "paid").count()
+        overdue_invoices = (
+            db.query(Invoice)
+            .filter(Invoice.status == "pending", Invoice.due_date < now.date())
+            .count()
+        )
+
+        invoice_summary = InvoiceStatusSummary(
+            pending=pending_invoices,
+            paid=paid_invoices,
+            overdue=overdue_invoices,
+            total=pending_invoices + paid_invoices + overdue_invoices,
+        )
+        logger.info("Estadísticas de facturas calculadas.")
+
+        # 3. Ingresos del Mes Actual
+        # Suma los montos de los pagos realizados en el mes y año actual.
+        monthly_revenue_query = (
+            db.query(func.sum(Payment.amount))
+            .filter(
+                extract("month", Payment.payment_date) == current_month,
+                extract("year", Payment.payment_date) == current_year,
+            )
+            .scalar()
+        )
+        monthly_revenue = monthly_revenue_query or 0.0
+        logger.info(f"Ingresos del mes calculados: {monthly_revenue}")
+
+        # 4. Nuevas Suscripciones del Mes
+        new_subscriptions_this_month = (
+            db.query(Subscription)
+            .filter(
+                extract("month", Subscription.subscription_date) == current_month,
+                extract("year", Subscription.subscription_date) == current_year,
+            )
+            .count()
+        )
+        logger.info(f"Nuevas suscripciones del mes: {new_subscriptions_this_month}")
+
+        # Construcción de la respuesta final
+        return DashboardStats(
+            client_summary=client_summary,
+            invoice_summary=invoice_summary,
+            monthly_revenue=round(monthly_revenue, 2),
+            new_subscriptions_this_month=new_subscriptions_this_month,
+        )
+
+    except Exception as e:
+        logger.error(
+            f"Error al calcular las estadísticas del panel de control: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500, detail="Error interno al generar las estadísticas."
         )

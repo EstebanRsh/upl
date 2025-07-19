@@ -19,6 +19,7 @@ from routes.subscription_routes import subscription_router
 from routes.admin_routes import admin_router
 from routes.token_routes import token_router
 from routes.billing_routes import billing_router
+from routes.role_routes import role_router
 from models import models
 import logging
 from core.logging_config import setup_logging
@@ -114,6 +115,7 @@ app.include_router(subscription_router, prefix="/api", tags=["Suscripciones"])
 app.include_router(admin_router, prefix="/api/admin", tags=["Administración"])
 app.include_router(token_router, prefix="/api", tags=["Token"])
 app.include_router(billing_router, prefix="/api", tags=["Facturación"])
+app.include_router(role_router, prefix="/api/admin", tags=["Roles y Permisos"])
 
 
 @app.get("/")

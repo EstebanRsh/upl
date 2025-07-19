@@ -19,121 +19,97 @@ from models.models import (
     InvoiceOut,
     PaginatedResponse,
 )
-from auth.security import is_admin, get_current_user
+from auth.security import has_permission, get_current_user
 from config.db import get_db
 
 logger = logging.getLogger(__name__)
 billing_router = APIRouter()
 
 
-@billing_router.post("/admin/settings/set")
-def set_business_setting(
-    setting_data: Setting,
-    admin_user: dict = Depends(is_admin),
-    db: Session = Depends(get_db),
-):
-    logger.info(
-        f"Admin '{admin_user.get('sub')}' estableciendo regla de negocio: '{setting_data.setting_name}'."
-    )
+@billing_router.post(
+    "/admin/settings/set", dependencies=[Depends(has_permission("roles:manage"))]
+)
+def set_business_setting(setting_data: Setting, db: Session = Depends(get_db)):
+    logger.info(f"Estableciendo regla de negocio: '{setting_data.setting_name}'.")
     try:
         setting = (
             db.query(BusinessSettings)
-            .filter(BusinessSettings.setting_name == setting_data.setting_name)
+            .filter_by(setting_name=setting_data.setting_name)
             .first()
         )
         if setting:
             setting.setting_value = setting_data.setting_value
             setting.description = setting_data.description
         else:
-            setting = BusinessSettings(
-                setting_name=setting_data.setting_name,
-                setting_value=setting_data.setting_value,
-                description=setting_data.description,
-            )
-            db.add(setting)
+            db.add(BusinessSettings(**setting_data.model_dump()))
         db.commit()
-        logger.info(f"Regla de negocio '{setting_data.setting_name}' guardada.")
-        return {
-            "message": f"Configuración '{setting_data.setting_name}' guardada exitosamente."
-        }
+        return {"message": f"Configuración '{setting_data.setting_name}' guardada."}
     except Exception as e:
         db.rollback()
         logger.error(f"Error en set_business_setting: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
 
-@billing_router.post("/admin/invoices/generate-monthly")
-def generate_monthly_invoices(
-    admin_user: dict = Depends(is_admin), db: Session = Depends(get_db)
-):
-    logger.info(
-        f"Admin '{admin_user.get('sub')}' ha iniciado la generación de facturas mensuales."
-    )
+@billing_router.post(
+    "/admin/invoices/generate-monthly",
+    dependencies=[Depends(has_permission("billing:generate_invoices"))],
+)
+def generate_monthly_invoices(db: Session = Depends(get_db)):
+    logger.info("Iniciando la generación de facturas mensuales.")
     try:
         payment_window_setting = (
             db.query(BusinessSettings)
-            .filter(BusinessSettings.setting_name == "payment_window_days")
+            .filter_by(setting_name="payment_window_days")
             .first()
         )
         if not payment_window_setting:
-            logger.warning(
-                "La regla de negocio 'payment_window_days' no está configurada."
-            )
             raise HTTPException(
                 status_code=400,
                 detail="La regla 'payment_window_days' no está configurada.",
             )
-        # ... (lógica sin cambios) ...
+
         payment_window_days = int(payment_window_setting.setting_value)
-        active_subscriptions = (
-            db.query(Subscription).filter(Subscription.status == "active").all()
-        )
-        logger.info(
-            f"Se encontraron {len(active_subscriptions)} suscripciones activas."
-        )
-        generated_count = 0
-        skipped_count = 0
+        active_subscriptions = db.query(Subscription).filter_by(status="active").all()
+        generated_count, skipped_count = 0, 0
         today = datetime.date.today()
+
         for sub in active_subscriptions:
-            existing_invoice = (
+            if (
                 db.query(Invoice)
-                .filter(
-                    Invoice.subscription_id == sub.id,
-                    extract("year", Invoice.issue_date) == today.year,
-                    extract("month", Invoice.issue_date) == today.month,
+                .filter_by(
+                    subscription_id=sub.id,
+                    issue_date_month=today.month,
+                    issue_date_year=today.year,
                 )
                 .first()
-            )
-            if existing_invoice:
+            ):
                 skipped_count += 1
                 continue
-            issue_date = today
-            due_date = issue_date + datetime.timedelta(days=payment_window_days)
+
             new_invoice = Invoice(
                 user_id=sub.user_id,
                 subscription_id=sub.id,
-                due_date=due_date,
+                due_date=today + datetime.timedelta(days=payment_window_days),
                 base_amount=sub.plan.price,
                 total_amount=sub.plan.price,
             )
             db.add(new_invoice)
             generated_count += 1
+
         db.commit()
         logger.info(
-            f"Proceso de facturación completado. Generadas: {generated_count}, Omitidas: {skipped_count}."
+            f"Facturación completada. Generadas: {generated_count}, Omitidas: {skipped_count}."
         )
         return {
             "message": "Proceso completado.",
             "facturas_generadas": generated_count,
-            "facturas_omitidas_por_duplicado": skipped_count,
+            "facturas_omitidas": skipped_count,
         }
     except HTTPException:
         raise
     except Exception as e:
         db.rollback()
-        logger.error(
-            f"Error inesperado en generate_monthly_invoices: {e}", exc_info=True
-        )
+        logger.error(f"Error en generate_monthly_invoices: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
 
@@ -143,61 +119,50 @@ def download_invoice_pdf(
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Esta ruta no cambia, ya que su lógica de permisos es correcta
     logger.info(
-        f"Usuario '{current_user.get('sub')}' solicitando descarga del recibo para la factura ID: {invoice_id}."
+        f"Usuario '{current_user.get('sub')}' solicitando descarga de factura ID: {invoice_id}."
     )
     try:
-        invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+        invoice = db.query(Invoice).filter_by(id=invoice_id).first()
         if not invoice:
-            logger.warning(
-                f"Intento de descarga de factura no existente (ID: {invoice_id})."
-            )
             raise HTTPException(status_code=404, detail="Factura no encontrada")
-        # ... (lógica de permisos y comprobación sin cambios) ...
-        token_user_id = current_user.get("user_id")
-        token_user_role = current_user.get("role")
-        if token_user_role != "administrador" and token_user_id != invoice.user_id:
-            logger.warning(f"Acceso no autorizado a factura ID {invoice_id}.")
+
+        user_has_permission = (
+            current_user.get("role") == "Super Administrador"
+            or current_user.get("user_id") == invoice.user_id
+        )
+        if not user_has_permission:
             raise HTTPException(
                 status_code=403, detail="No tienes permiso para descargar esta factura."
             )
-        if not invoice.receipt_pdf_url:
-            logger.warning(f"Factura ID {invoice_id} no tiene un recibo PDF.")
+
+        if not invoice.receipt_pdf_url or not os.path.exists(invoice.receipt_pdf_url):
             raise HTTPException(
-                status_code=404, detail="Esta factura no tiene un recibo PDF asociado."
+                status_code=404, detail="El archivo PDF del recibo no fue encontrado."
             )
-        file_path = invoice.receipt_pdf_url
-        if not os.path.exists(file_path):
-            logger.error(f"Archivo PDF no encontrado en el servidor: {file_path}")
-            raise HTTPException(
-                status_code=404,
-                detail="El archivo PDF del recibo no fue encontrado en el servidor.",
-            )
-        logger.info(f"Enviando archivo PDF para la factura ID: {invoice_id}.")
+
         return FileResponse(
-            path=file_path,
+            path=invoice.receipt_pdf_url,
             media_type="application/pdf",
-            filename=os.path.basename(file_path),
+            filename=os.path.basename(invoice.receipt_pdf_url),
         )
     except HTTPException:
         raise
     except Exception as e:
         logger.error(
-            f"Error inesperado en download_invoice_pdf (ID: {invoice_id}): {e}",
-            exc_info=True,
+            f"Error en download_invoice_pdf (ID: {invoice_id}): {e}", exc_info=True
         )
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
 
-@billing_router.post("/admin/invoices/process-overdue")
-def process_overdue_invoices(
-    admin_user: dict = Depends(is_admin), db: Session = Depends(get_db)
-):
-    logger.info(
-        f"Admin '{admin_user.get('sub')}' ha iniciado el procesamiento de facturas vencidas."
-    )
+@billing_router.post(
+    "/admin/invoices/process-overdue",
+    dependencies=[Depends(has_permission("billing:process_overdue"))],
+)
+def process_overdue_invoices(db: Session = Depends(get_db)):
+    logger.info("Iniciando el procesamiento de facturas vencidas.")
     try:
-        # ... (lógica sin cambios) ...
         late_fee_setting = (
             db.query(BusinessSettings).filter_by(setting_name="late_fee_amount").first()
         )
@@ -207,39 +172,34 @@ def process_overdue_invoices(
             .first()
         )
         if not late_fee_setting or not suspension_days_setting:
-            logger.error("Faltan reglas de negocio para procesar vencidas.")
             raise HTTPException(
                 status_code=400,
-                detail="Faltan reglas de negocio para 'late_fee_amount' o 'days_for_suspension'.",
+                detail="Faltan reglas de negocio para procesar vencidas.",
             )
-        late_fee_amount = float(late_fee_setting.setting_value)
+
+        late_fee = float(late_fee_setting.setting_value)
         days_for_suspension = int(suspension_days_setting.setting_value)
         today = datetime.date.today()
+
         overdue_invoices = (
             db.query(Invoice)
             .filter(Invoice.status == "pending", Invoice.due_date < today)
             .all()
         )
-        logger.info(f"Se encontraron {len(overdue_invoices)} facturas vencidas.")
-        processed_count = 0
-        suspended_count = 0
+        processed_count, suspended_count = 0, 0
+
         for invoice in overdue_invoices:
             if invoice.late_fee == 0.0:
-                invoice.late_fee = late_fee_amount
-                invoice.total_amount += late_fee_amount
+                invoice.late_fee = late_fee
+                invoice.total_amount += late_fee
                 processed_count += 1
-            days_overdue = (today - invoice.due_date.date()).days
-            if days_overdue >= days_for_suspension:
-                subscription = db.get(Subscription, invoice.subscription_id)
-                if subscription and subscription.status == "active":
-                    subscription.status = "suspended"
-                    suspended_count += 1
+            if (today - invoice.due_date.date()).days >= days_for_suspension:
+                invoice.subscription.status = "suspended"
+                suspended_count += 1
+
         db.commit()
-        logger.info(
-            f"Proceso de vencidas completado. Con recargo: {processed_count}, Suspendidos: {suspended_count}."
-        )
         return {
-            "message": "Proceso de facturas vencidas completado.",
+            "message": "Proceso de vencidas completado.",
             "facturas_con_recargo": processed_count,
             "servicios_suspendidos": suspended_count,
         }
@@ -247,18 +207,12 @@ def process_overdue_invoices(
         raise
     except Exception as e:
         db.rollback()
-        logger.error(
-            f"Error inesperado en process_overdue_invoices: {e}", exc_info=True
-        )
+        logger.error(f"Error en process_overdue_invoices: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
 
 @billing_router.get(
-    "/users/me/invoices",
-    response_model=PaginatedResponse[InvoiceOut],
-    summary="Consultar mi historial de facturas",
-    description="**Permisos requeridos: `autenticado`**.<br>Devuelve una lista paginada de todas las facturas del usuario.",
-    tags=["Cliente"],
+    "/users/me/invoices", response_model=PaginatedResponse[InvoiceOut], tags=["Cliente"]
 )
 def get_my_invoices(
     page: int = Query(1, ge=1),
@@ -266,27 +220,24 @@ def get_my_invoices(
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Esta ruta no cambia
     user_id = current_user.get("user_id")
     logger.info(
-        f"Usuario ID {user_id} solicitando su historial de facturas (Página: {page})."
+        f"Usuario ID {user_id} solicitando historial de facturas (Página: {page})."
     )
     try:
         query = (
             db.query(Invoice)
-            .filter(Invoice.user_id == user_id)
+            .filter_by(user_id=user_id)
             .order_by(Invoice.issue_date.desc())
         )
-
         total_items = query.count()
-        offset = (page - 1) * size
-        invoices_query = query.offset(offset).limit(size).all()
-        total_pages = math.ceil(total_items / size)
-
+        invoices = query.offset((page - 1) * size).limit(size).all()
         return PaginatedResponse(
             total_items=total_items,
-            total_pages=total_pages,
+            total_pages=math.ceil(total_items / size),
             current_page=page,
-            items=invoices_query,
+            items=invoices,
         )
     except Exception as e:
         logger.error(

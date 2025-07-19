@@ -1,136 +1,131 @@
 # auth/security.py
-# -----------------------------------------------------------------------------
-# MÓDULO DE SEGURIDAD Y AUTENTICACIÓN
-# -----------------------------------------------------------------------------
-# Este archivo es fundamental para la seguridad de la API. Sus responsabilidades son:
-# 1. Hashear y verificar contraseñas de forma segura usando passlib.
-# 2. Generar y decodificar JSON Web Tokens (JWT) para la autenticación y autorización.
-# 3. Proveer dependencias de FastAPI ('Depends') para proteger las rutas,
-#    verificando que el usuario esté autenticado y tenga los permisos necesarios.
-# -----------------------------------------------------------------------------
+import logging
 import os
 from dotenv import load_dotenv
 import datetime
-import pytz  # Para manejar zonas horarias de forma correcta.
-import jwt  # Para la creación y validación de JSON Web Tokens.
+import pytz
+import jwt
 import uuid
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from passlib.context import CryptContext  # Para el hasheo de contraseñas.
+from passlib.context import CryptContext
+from sqlalchemy.orm import Session, joinedload
+from config.db import get_db
+from models.models import User, Role  # Importamos los modelos necesarios
 
 load_dotenv()
-# 1. Configuración del hasheo de contraseñas
-# Se crea un contexto de 'passlib' que usará el algoritmo 'bcrypt', el estándar actual
-# para el almacenamiento seguro de contraseñas.
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-# 2. Configuración del esquema de autenticación OAuth2
-# 'OAuth2PasswordBearer' es una clase de FastAPI que facilita la obtención del token
-# desde la cabecera 'Authorization: Bearer <token>'.
-# 'tokenUrl' le indica a la documentación automática de la API cuál es el endpoint de login.
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/users/login")
+logger = logging.getLogger(__name__)
 
 
 class Security:
     """Clase que encapsula toda la lógica de seguridad."""
 
-    # ¡IMPORTANTE! Esta clave secreta se usa para firmar los tokens JWT.
-    # En producción, NUNCA debe estar escrita directamente en el código.
-    # Debe cargarse desde una variable de entorno segura.
     secret = os.getenv("JWT_SECRET_KEY")
 
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
-        """Verifica si una contraseña en texto plano coincide con su hash almacenado."""
         return pwd_context.verify(plain_password, hashed_password)
 
     @staticmethod
     def get_password_hash(password: str) -> str:
-        """Genera el hash de una contraseña usando bcrypt."""
         return pwd_context.hash(password)
 
     @classmethod
-    def generate_access_token(cls, authUser) -> str:
-        """
-        Genera un TOKEN DE ACCESO de corta duración (30 minutos).
-        Se usa para autorizar al usuario en cada petición a las rutas protegidas.
-        """
-        # Se establece la zona horaria para que las fechas de expiración sean consistentes.
+    def generate_access_token(cls, authUser: User) -> str:
+        """Genera un TOKEN DE ACCESO de corta duración."""
         hoy = datetime.datetime.now(pytz.timezone("America/Buenos_Aires"))
 
-        # El 'payload' es la información que se almacena dentro del token.
+        # --- CORREGIDO: Usamos la relación para obtener el nombre del rol ---
+        role_name = authUser.role_obj.name if authUser.role_obj else None
+
         payload = {
-            "exp": hoy + datetime.timedelta(minutes=30),  # Tiempo de expiración.
-            "iat": hoy,  # Tiempo de emisión ('issued at').
-            "sub": authUser.username,  # 'Subject' o sujeto, identifica al usuario.
-            "user_id": authUser.id,  # ID del usuario, útil en las rutas.
-            "role": authUser.role,  # Rol, para el control de acceso (autorización).
-            "jti": str(
-                uuid.uuid4()
-            ),  # ID único del token (JWT ID), útil para la revocación.
+            "exp": hoy + datetime.timedelta(minutes=30),
+            "iat": hoy,
+            "sub": authUser.username,
+            "user_id": authUser.id,
+            "role": role_name,  # <-- Se usa la variable corregida
+            "jti": str(uuid.uuid4()),
         }
-        # Se codifica el payload junto con la clave secreta para generar el token.
         return jwt.encode(payload, cls.secret, algorithm="HS256")
 
     @classmethod
-    def generate_refresh_token(cls, authUser) -> str:
-        """
-        Genera un TOKEN DE ACTUALIZACIÓN de larga duración (1 día).
-        Su única finalidad es obtener un nuevo token de acceso cuando el anterior expira.
-        """
+    def generate_refresh_token(cls, authUser: User) -> str:
+        """Genera un TOKEN DE ACTUALIZACIÓN de larga duración."""
         hoy = datetime.datetime.now(pytz.timezone("America/Buenos_Aires"))
-
-        # El payload del refresh token es más simple, solo necesita identificar al usuario.
         payload = {
-            "exp": hoy + datetime.timedelta(days=1),  # Duración más larga.
+            "exp": hoy + datetime.timedelta(days=1),
             "iat": hoy,
             "sub": authUser.username,
-            "jti": str(uuid.uuid4()),  # ID único del token.
+            "jti": str(uuid.uuid4()),
         }
         return jwt.encode(payload, cls.secret, algorithm="HS256")
 
 
-# --- Dependencias de Seguridad de FastAPI ---
-
-
-def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
+def get_current_user(
+    token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
+):
     """
-    Dependencia que valida el token de acceso y devuelve su contenido.
-    FastAPI inyectará esta dependencia en las rutas que la requieran.
+    Decodifica el token JWT, obtiene el usuario de la BD y sus permisos.
     """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="No se pudieron validar las credenciales",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
     try:
-        # Intenta decodificar el token usando la misma clave secreta.
-        # jwt.decode verifica automáticamente la firma y la fecha de expiración.
         payload = jwt.decode(token, Security.secret, algorithms=["HS256"])
-        return payload
-    except jwt.ExpiredSignatureError:
-        # Si el token ha expirado, lanza una excepción HTTP 401.
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="El token ha expirado",
-            headers={"WWW-Authenticate": "Bearer"},
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+
+        user = (
+            db.query(User)
+            .options(joinedload(User.role_obj).joinedload(Role.permissions))
+            .filter(User.username == username)
+            .first()
         )
-    except jwt.InvalidTokenError:
-        # Si el token es inválido por cualquier otra razón (firma incorrecta, etc.),
-        # lanza una excepción HTTP 401.
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token inválido",
-            headers={"WWW-Authenticate": "Bearer"},
+        if user is None:
+            raise credentials_exception
+
+        user_permissions = (
+            {p.name for p in user.role_obj.permissions} if user.role_obj else set()
         )
+
+        return {
+            "user_id": user.id,
+            "sub": user.username,
+            "role": user.role_obj.name if user.role_obj else None,
+            "permissions": user_permissions,
+        }
+    except jwt.JWTError:
+        raise credentials_exception
 
 
 def is_admin(current_user: dict = Depends(get_current_user)):
-    """
-    Dependencia "guardiana" que restringe el acceso solo a administradores.
-    Reutiliza la dependencia 'get_current_user' para obtener primero al usuario.
-    """
-    # Verifica si el rol extraído del token es 'administrador'.
-    if current_user.get("role") != "administrador":
-        # Si no lo es, lanza una excepción HTTP 403 Forbidden.
+    """[DEPRECADO] Reemplazar por has_permission."""
+    if current_user.get("role") != "Super Administrador":
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos de administrador para realizar esta acción.",
+            status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes."
         )
-    # Si es administrador, devuelve los datos del usuario para que la ruta los pueda usar.
     return current_user
+
+
+def has_permission(required_permission: str):
+    """
+    Crea una dependencia que verifica si el usuario tiene un permiso específico.
+    """
+
+    def permission_checker(current_user: dict = Depends(get_current_user)):
+        if required_permission not in current_user.get("permissions", set()):
+            logger.warning(
+                f"Acceso denegado para '{current_user.get('sub')}'. Permiso requerido: '{required_permission}'."
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"No tienes permiso para realizar esta acción.",
+            )
+        return current_user
+
+    return permission_checker

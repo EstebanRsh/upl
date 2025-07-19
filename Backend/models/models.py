@@ -11,6 +11,7 @@ from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float
 from sqlalchemy.orm import sessionmaker, relationship
 from pydantic import BaseModel, EmailStr, Field
 import datetime
+from sqlalchemy import Table, event
 from typing import List, TypeVar, Generic
 from core.constants import (
     USER_ROLE_CLIENT,
@@ -33,9 +34,10 @@ class User(Base):
     password = Column("password", String, nullable=False)
     email = Column("email", String(80), unique=True, nullable=True)
     id_userdetail = Column(Integer, ForeignKey("userdetails.id"))
-    role = Column("role", String, default="cliente", nullable=False)
     refresh_token = Column("refresh_token", String, nullable=True)
 
+    role_id = Column(Integer, ForeignKey("roles.id"))  # El ID del rol del usuario
+    role_obj = relationship("Role", back_populates="users")  # El objeto Role completo
     # ... (las relaciones no cambian) ...
     userdetail = relationship(
         "UserDetail",
@@ -55,12 +57,11 @@ class User(Base):
     )
 
     # --- MODIFICADO ---
-    def __init__(self, username, password, email=None, role=USER_ROLE_CLIENT):
+    def __init__(self, username, password, email=None):
         """Constructor para crear una instancia de User."""
         self.username = username
         self.password = password
         self.email = email
-        self.role = role
 
 
 # ... (La clase UserDetail no cambia) ...
@@ -169,6 +170,43 @@ class BusinessSettings(Base):
         self.setting_name = setting_name
         self.setting_value = setting_value
         self.description = description
+
+
+role_permissions = Table(
+    "role_permissions",
+    Base.metadata,
+    Column("role_id", Integer, ForeignKey("roles.id"), primary_key=True),
+    Column("permission_id", Integer, ForeignKey("permissions.id"), primary_key=True),
+)
+
+
+class Role(Base):
+    """Modelo para los roles de usuario (ej. 'Administrador', 'Facturación')."""
+
+    __tablename__ = "roles"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(50), unique=True, nullable=False)
+    description = Column(String(255), nullable=True)
+
+    # Relación muchos-a-muchos con Permisos
+    permissions = relationship(
+        "Permission", secondary=role_permissions, back_populates="roles"
+    )
+    users = relationship("User", back_populates="role_obj")
+
+
+class Permission(Base):
+    """Modelo para los permisos específicos (ej. 'users:create', 'payments:delete')."""
+
+    __tablename__ = "permissions"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), unique=True, nullable=False)  # ej. 'users:read'
+    description = Column(String(255), nullable=True)
+
+    # Relación muchos-a-muchos con Roles
+    roles = relationship(
+        "Role", secondary=role_permissions, back_populates="permissions"
+    )
 
 
 class Invoice(Base):
@@ -378,3 +416,115 @@ class DashboardStats(BaseModel):
     invoice_summary: InvoiceStatusSummary
     monthly_revenue: float
     new_subscriptions_this_month: int
+
+
+PERMISSIONS_LIST = [
+    # Permisos de Usuarios
+    {"name": "users:create", "description": "Permite crear nuevos usuarios."},
+    {
+        "name": "users:read_all",
+        "description": "Permite ver la lista de todos los usuarios.",
+    },
+    {
+        "name": "users:update",
+        "description": "Permite actualizar los detalles de cualquier usuario.",
+    },
+    {"name": "users:delete", "description": "Permite eliminar usuarios."},
+    # Permisos de Planes
+    {"name": "plans:create", "description": "Permite crear nuevos planes de internet."},
+    {"name": "plans:update", "description": "Permite actualizar planes de internet."},
+    {"name": "plans:delete", "description": "Permite eliminar planes de internet."},
+    # Permisos de Pagos
+    {"name": "payments:create", "description": "Permite registrar nuevos pagos."},
+    # Permisos de Facturación
+    {
+        "name": "billing:generate_invoices",
+        "description": "Permite generar facturas mensuales masivamente.",
+    },
+    {
+        "name": "billing:process_overdue",
+        "description": "Permite procesar facturas vencidas.",
+    },
+    # Permisos de Roles
+    {
+        "name": "roles:manage",
+        "description": "Permite administrar roles y sus permisos.",
+    },
+]
+
+
+# Esta función se ejecuta después de que la tabla 'permissions' es creada
+@event.listens_for(Permission.__table__, "after_create")
+def insert_initial_permissions(target, connection, **kw):
+    connection.execute(target.insert(), PERMISSIONS_LIST)
+    print("Permisos iniciales sembrados en la base de datos.")
+
+
+# Esta función se ejecuta después de que la tabla 'roles' es creada
+@event.listens_for(Role.__table__, "after_create")
+def insert_initial_roles(target, connection, **kw):
+    # Creamos el rol de SuperAdmin
+    connection.execute(
+        target.insert(),
+        [
+            {
+                "name": "Super Administrador",
+                "description": "Tiene todos los permisos del sistema.",
+            }
+        ],
+    )
+    print("Rol de Super Administrador inicial sembrado.")
+
+    # Ahora asignamos TODOS los permisos a este rol
+    permissions = connection.execute(Permission.__table__.select()).fetchall()
+    super_admin_role = connection.execute(
+        Role.__table__.select().where(Role.name == "Super Administrador")
+    ).first()
+
+    if super_admin_role:
+        role_id = super_admin_role.id
+        for perm in permissions:
+            connection.execute(
+                role_permissions.insert().values(role_id=role_id, permission_id=perm.id)
+            )
+    print("Todos los permisos asignados al rol de Super Administrador.")
+
+
+class PermissionOut(BaseModel):
+    """Schema de respuesta para un permiso."""
+
+    id: int
+    name: str
+    description: str | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class RoleBase(BaseModel):
+    """Schema base para un rol."""
+
+    name: str
+    description: str | None = None
+
+
+class RoleCreate(RoleBase):
+    """Schema para crear un nuevo rol."""
+
+    pass
+
+
+class RoleOut(RoleBase):
+    """Schema de respuesta para un rol, incluyendo sus permisos."""
+
+    id: int
+    permissions: List[PermissionOut] = []
+
+    class Config:
+        from_attributes = True
+
+
+class RolePermissionUpdate(BaseModel):
+    """Schema para actualizar los permisos de un rol."""
+
+    permission_ids: List[int]

@@ -20,7 +20,11 @@ from routes.admin_routes import admin_router
 from routes.token_routes import token_router
 from routes.billing_routes import billing_router
 from models import models
+import logging
+from core.logging_config import setup_logging
 
+# Llama a la función para configurar el logging al inicio de la app.
+setup_logging()
 # Crear las tablas en la base de datos
 Base.metadata.create_all(bind=engine)
 
@@ -73,6 +77,20 @@ API para la gestión de clientes, planes, suscripciones y facturación de un Pro
     version="1.1.0",
     openapi_tags=tags_metadata,
 )
+logger = logging.getLogger(__name__)
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Evento que se ejecuta al iniciar la aplicación."""
+    logger.info("La aplicación se ha iniciado.")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Evento que se ejecuta al apagar la aplicación."""
+    logger.info("La aplicación se está apagando.")
+
 
 origins = [
     "http://localhost:3000",

@@ -2,47 +2,41 @@
 # -----------------------------------------------------------------------------
 # RUTAS DE ADMINISTRACIÓN
 # -----------------------------------------------------------------------------
-from fastapi import APIRouter, Depends, Query, HTTPException, status
-from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
-from config.db import get_db
+
+import logging
 import math
 from typing import Optional
+from fastapi import APIRouter, Depends, Query, HTTPException, status
+from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from config.db import get_db
+from auth.security import is_admin, Security
 from models.models import (
     User,
     UserDetail,
     InputUser,
-    Payment,
     UpdateUserDetail,
-    Subscription,
-    UpdateSubscriptionStatus,
     PaginatedResponse,
     UserOut,
-    SubscriptionOut,
-    PaymentOut,
-    PlanOut,
-    UpdateUserRole,
     BusinessSettings,
 )
-from sqlalchemy.orm import joinedload
-from auth.security import is_admin, Security
-from sqlalchemy.exc import IntegrityError
 from schemas.settings_schemas import Setting, SettingsUpdate
 
+logger = logging.getLogger(__name__)
 admin_router = APIRouter()
 
-# --- RUTAS DE ADMINISTRACIÓN DE USUARIOS ---
 
-
-@admin_router.post(
-    "/users/add",
-    status_code=status.HTTP_201_CREATED,
-    summary="Crear un nuevo usuario",
-    description="**Permisos requeridos: `administrador`**.<br>Registra un nuevo usuario (cliente) y sus detalles personales en el sistema.",
-)
-def add_user(user_data: InputUser, db: Session = Depends(get_db)):
-    """Registra un nuevo usuario (cliente) y sus detalles personales."""
+@admin_router.post("/users/add", status_code=status.HTTP_201_CREATED)
+def add_user(
+    user_data: InputUser,
+    db: Session = Depends(get_db),
+    admin_user: dict = Depends(is_admin),
+):
+    logger.info(
+        f"Admin '{admin_user.get('sub')}' iniciando creación de usuario '{user_data.username}'."
+    )
     try:
+        # ... (lógica sin cambios) ...
         new_user_detail = UserDetail(
             dni=user_data.dni,
             firstname=user_data.firstname,
@@ -63,24 +57,26 @@ def add_user(user_data: InputUser, db: Session = Depends(get_db)):
         new_user.userdetail = new_user_detail
         db.add(new_user)
         db.commit()
+        logger.info(f"Usuario '{user_data.username}' creado exitosamente.")
         return {"message": "Cliente agregado exitosamente"}
     except IntegrityError:
-        db.rollback()  # Es importante revertir la transacción fallida
+        db.rollback()
+        logger.warning(
+            f"Conflicto al crear usuario. Username '{user_data.username}' o email '{user_data.email}' ya existen."
+        )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"El usuario '{user_data.username}' o el email '{user_data.email}' ya existen.",
         )
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error inesperado en add_user: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
 
-@admin_router.get(
-    "/users/all",
-    response_model=PaginatedResponse[UserOut],
-    summary="Obtener todos los usuarios",
-    description="**Permisos requeridos: `administrador`**.<br>Obtiene una lista paginada y opcionalmente filtrada por nombre de todos los usuarios del sistema.",
-)
+@admin_router.get("/users/all", response_model=PaginatedResponse[UserOut])
 def get_all_users(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
@@ -88,137 +84,166 @@ def get_all_users(
     admin_user: dict = Depends(is_admin),
     db: Session = Depends(get_db),
 ):
-    """Obtiene una lista paginada y filtrada de todos los usuarios del sistema."""
-    query = db.query(User).join(User.userdetail)
-    if username:
-        query = query.filter(User.username.ilike(f"{username}%"))
-
-    total_items = query.count()
-    offset = (page - 1) * size
-    users_query = (
-        query.options(joinedload(User.userdetail)).offset(offset).limit(size).all()
-    )
-    total_pages = math.ceil(total_items / size)
-
-    # --- INICIO DE LA CORRECCIÓN ---
-    # Se construye manualmente la lista de respuesta para que coincida con el modelo UserOut.
-    items_list = [
-        UserOut(
-            username=user.username,
-            email=user.email,
-            dni=user.userdetail.dni,
-            firstname=user.userdetail.firstname,
-            lastname=user.userdetail.lastname,
-            address=user.userdetail.address,
-            phone=user.userdetail.phone,
-            role=user.role,
+    logger.info(f"Admin '{admin_user.get('sub')}' solicitó la lista de usuarios.")
+    try:
+        # ... (lógica sin cambios) ...
+        query = db.query(User).join(User.userdetail)
+        if username:
+            query = query.filter(User.username.ilike(f"{username}%"))
+        total_items = query.count()
+        offset = (page - 1) * size
+        users_query = query.offset(offset).limit(size).all()
+        total_pages = math.ceil(total_items / size)
+        items_list = [
+            UserOut(
+                username=user.username,
+                email=user.email,
+                dni=user.userdetail.dni,
+                firstname=user.userdetail.firstname,
+                lastname=user.userdetail.lastname,
+                address=user.userdetail.address,
+                phone=user.userdetail.phone,
+                role=user.role,
+            )
+            for user in users_query
+            if user.userdetail
+        ]
+        return PaginatedResponse(
+            total_items=total_items,
+            total_pages=total_pages,
+            current_page=page,
+            items=items_list,
         )
-        for user in users_query
-        if user.userdetail  # Nos aseguramos de que el usuario tenga detalles
-    ]
-    # --- FIN DE LA CORRECCIÓN ---
-
-    return PaginatedResponse(
-        total_items=total_items,
-        total_pages=total_pages,
-        current_page=page,
-        items=items_list,
-    )
+    except Exception as e:
+        logger.error(f"Error inesperado en get_all_users: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
 
-@admin_router.put(
-    "/users/{user_id}/details",
-    summary="Actualizar detalles de un usuario",
-    description="**Permisos requeridos: `administrador`**.<br>Permite a un administrador actualizar los detalles personales de cualquier cliente.",
-)
+@admin_router.put("/users/{user_id}/details")
 def update_user_details(
     user_id: int,
     user_data: UpdateUserDetail,
     admin_user: dict = Depends(is_admin),
     db: Session = Depends(get_db),
 ):
-    """Endpoint para que un administrador actualice los detalles de un cliente."""
-    user_to_update = db.query(User).filter(User.id == user_id).first()
-    if not user_to_update or not user_to_update.userdetail:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    logger.info(
+        f"Admin '{admin_user.get('sub')}' actualizando detalles para el usuario ID: {user_id}."
+    )
+    try:
+        user_to_update = db.query(User).filter(User.id == user_id).first()
+        if not user_to_update or not user_to_update.userdetail:
+            logger.warning(
+                f"Intento de actualizar un usuario no existente (ID: {user_id})."
+            )
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        update_data = user_data.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(user_to_update.userdetail, key, value)
+        db.commit()
+        logger.info(f"Detalles del usuario ID {user_id} actualizados correctamente.")
+        return {
+            "message": f"Detalles del usuario con ID {user_id} actualizados exitosamente."
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(
+            f"Error inesperado en update_user_details (ID: {user_id}): {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
-    update_data = user_data.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(user_to_update.userdetail, key, value)
 
-    db.commit()
-    return {
-        "message": f"Detalles del usuario con ID {user_id} actualizados exitosamente."
-    }
-
-
-@admin_router.delete(
-    "/users/{user_id}",
-    summary="Eliminar un usuario",
-    description="**Permisos requeridos: `administrador`**.<br>Elimina a un usuario y todos sus datos asociados en cascada. Un administrador no puede eliminarse a sí mismo.",
-)
+@admin_router.delete("/users/{user_id}")
 def delete_user(
     user_id: int, admin_user: dict = Depends(is_admin), db: Session = Depends(get_db)
 ):
-    """Endpoint para que un administrador elimine a un usuario y todos sus datos en cascada."""
     token_user_id = admin_user.get("user_id")
-    if token_user_id == user_id:
+    logger.info(
+        f"Admin '{admin_user.get('sub')}' solicitando eliminar usuario ID: {user_id}."
+    )
+    try:
+        if token_user_id == user_id:
+            logger.warning(
+                f"Admin '{admin_user.get('sub')}' intentó eliminarse a sí mismo."
+            )
+            raise HTTPException(
+                status_code=400,
+                detail="Un administrador no puede eliminarse a sí mismo.",
+            )
+        user_to_delete = db.query(User).filter(User.id == user_id).first()
+        if not user_to_delete:
+            logger.warning(
+                f"Intento de eliminar un usuario no existente (ID: {user_id})."
+            )
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        db.delete(user_to_delete)
+        db.commit()
+        logger.info(f"Usuario ID {user_id} eliminado exitosamente.")
+        return {
+            "message": f"Usuario con ID {user_id} y todos sus datos han sido eliminados."
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(
+            f"Error inesperado en delete_user (ID: {user_id}): {e}", exc_info=True
+        )
+        raise HTTPException(status_code=500, detail="Error interno del servidor.")
+
+
+@admin_router.get("/settings", response_model=list[Setting])
+def get_business_settings(
+    db: Session = Depends(get_db), _current_user: dict = Depends(is_admin)
+):
+    logger.info(f"Admin solicitó las configuraciones de la empresa.")
+    try:
+        settings = db.query(BusinessSettings).all()
+        return settings
+    except Exception as e:
+        logger.error(f"Error inesperado en get_business_settings: {e}", exc_info=True)
         raise HTTPException(
-            status_code=400, detail="Un administrador no puede eliminarse a sí mismo."
+            status_code=500, detail="Error al obtener las configuraciones."
         )
 
-    user_to_delete = db.query(User).filter(User.id == user_id).first()
-    if not user_to_delete:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-    db.delete(user_to_delete)
-    db.commit()
-    return {
-        "message": f"Usuario con ID {user_id} y todos sus datos han sido eliminados."
-    }
-
-
-# Endpoint para OBTENER todas las configuraciones
-@admin_router.get(
-    "/settings",
-    response_model=list[Setting],
-    summary="Obtener configuraciones de la empresa",
-)
-def get_business_settings(
-    db: Session = Depends(get_db), current_user: dict = Depends(is_admin)
-):
-    settings = db.query(BusinessSettings).all()
-    return settings
-
-
-# Endpoint para ACTUALIZAR las configuraciones
-@admin_router.put(
-    "/settings", status_code=200, summary="Actualizar configuraciones de la empresa"
-)
+@admin_router.put("/settings", status_code=200)
 def update_business_settings(
     update_data: SettingsUpdate,
     db: Session = Depends(get_db),
     current_user: dict = Depends(is_admin),
 ):
-    for setting_item in update_data.settings:
-        # Busca el registro en la BD
-        db_setting = (
-            db.query(BusinessSettings)
-            .filter(BusinessSettings.setting_name == setting_item.setting_name)
-            .first()
-        )
-
-        if db_setting:
-            # Si existe, lo actualiza
-            db_setting.setting_value = setting_item.setting_value
-        else:
-            # Si no existe, puedes decidir crearlo o lanzar un error
-            # Por ahora, lo crearemos para flexibilidad
-            new_setting = BusinessSettings(
-                setting_name=setting_item.setting_name,
-                setting_value=setting_item.setting_value,
+    logger.info(
+        f"Admin '{current_user.get('sub')}' está actualizando las configuraciones."
+    )
+    try:
+        for setting_item in update_data.settings:
+            db_setting = (
+                db.query(BusinessSettings)
+                .filter(BusinessSettings.setting_name == setting_item.setting_name)
+                .first()
             )
-            db.add(new_setting)
-
-    db.commit()
-    return {"message": "Configuraciones actualizadas exitosamente"}
+            if db_setting:
+                db_setting.setting_value = setting_item.setting_value
+                logger.info(f"Configuración '{setting_item.setting_name}' actualizada.")
+            else:
+                new_setting = BusinessSettings(
+                    setting_name=setting_item.setting_name,
+                    setting_value=setting_item.setting_value,
+                )
+                db.add(new_setting)
+                logger.info(
+                    f"Nueva configuración '{setting_item.setting_name}' creada."
+                )
+        db.commit()
+        return {"message": "Configuraciones actualizadas exitosamente"}
+    except Exception as e:
+        db.rollback()
+        logger.error(
+            f"Error inesperado en update_business_settings: {e}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=500, detail="Error al actualizar las configuraciones."
+        )

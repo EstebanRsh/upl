@@ -2,13 +2,9 @@
 # -----------------------------------------------------------------------------
 # RUTAS DE GESTIÓN DE PLANES DE INTERNET (CRUD)
 # -----------------------------------------------------------------------------
-# Este módulo define los endpoints para las operaciones CRUD (Crear, Leer,
-# Actualizar, Borrar) sobre los planes de internet. Todas estas operaciones
-# son administrativas y están protegidas por la dependencia 'is_admin'.
-# -----------------------------------------------------------------------------
-from fastapi import APIRouter, Depends, Query
+import logging
 import math
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlalchemy.orm import Session
 from models.models import (
     InternetPlan,
@@ -18,63 +14,54 @@ from models.models import (
     PlanOut,
     Subscription,
 )
-from sqlalchemy.orm import Session
 from config.db import get_db
 from auth.security import is_admin
 
-# Creación de un router específico para las rutas de planes.
+logger = logging.getLogger(__name__)
 plan_router = APIRouter()
 
 
-@plan_router.post(
-    "/admin/plans/add",
-    summary="Crear un nuevo plan de internet",
-    description="**Permisos requeridos: `administrador`**.<br>Crea un nuevo plan de internet en la base de datos con su nombre, velocidad y precio.",
-)
+@plan_router.post("/admin/plans/add", status_code=status.HTTP_201_CREATED)
 def add_plan(
     plan_data: InputPlan,
     admin_user: dict = Depends(is_admin),
     db: Session = Depends(get_db),
 ):
-    """Crea un nuevo plan de internet en la base de datos."""
+    logger.info(
+        f"Admin '{admin_user.get('sub')}' creando nuevo plan: '{plan_data.name}'."
+    )
     try:
         new_plan = InternetPlan(
             name=plan_data.name, speed_mbps=plan_data.speed_mbps, price=plan_data.price
         )
         db.add(new_plan)
         db.commit()
-        return JSONResponse(
-            status_code=201, content={"message": f"Plan '{plan_data.name}' agregado."}
-        )
+        db.refresh(new_plan)
+        logger.info(f"Plan '{new_plan.name}' creado con ID: {new_plan.id}.")
+        return {"message": f"Plan '{plan_data.name}' agregado."}
     except Exception as e:
         db.rollback()
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        logger.error(f"Error inesperado en add_plan: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
 
-@plan_router.get(
-    "/plans/all",
-    response_model=PaginatedResponse[PlanOut],
-    summary="Obtener todos los planes de internet",
-    description="**Permisos requeridos: `administrador`**.<br>Obtiene una lista paginada de todos los planes de internet existentes en el sistema.",
-)
+@plan_router.get("/plans/all", response_model=PaginatedResponse[PlanOut])
 def get_all_plans(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
-    admin_user: dict = Depends(is_admin),
     db: Session = Depends(get_db),
 ):
-    """Obtiene una lista paginada de todos los planes de internet existentes."""
+    logger.info("Solicitud pública para obtener todos los planes.")
     try:
+        # ... (lógica sin cambios) ...
         offset = (page - 1) * size
         total_items = db.query(InternetPlan).count()
         if total_items == 0:
             return PaginatedResponse(
                 total_items=0, total_pages=0, current_page=1, items=[]
             )
-
         plans_query = db.query(InternetPlan).offset(offset).limit(size).all()
         total_pages = math.ceil(total_items / size)
-
         return PaginatedResponse(
             total_items=total_items,
             total_pages=total_pages,
@@ -82,88 +69,83 @@ def get_all_plans(
             items=plans_query,
         )
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        logger.error(f"Error inesperado en get_all_plans: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
 
-@plan_router.put(
-    "/admin/plans/update/{plan_id}",
-    summary="Actualizar un plan de internet",
-    description="**Permisos requeridos: `administrador`**.<br>Actualiza los datos (nombre, velocidad, precio) de un plan de internet existente.",
-)
+@plan_router.put("/admin/plans/update/{plan_id}")
 def update_plan(
     plan_id: int,
     plan_data: UpdatePlan,
     admin_user: dict = Depends(is_admin),
     db: Session = Depends(get_db),
 ):
-    """Actualiza los datos de un plan de internet existente."""
+    logger.info(f"Admin '{admin_user.get('sub')}' actualizando plan ID: {plan_id}.")
     try:
         plan_to_update = (
             db.query(InternetPlan).filter(InternetPlan.id == plan_id).first()
         )
         if not plan_to_update:
-            return JSONResponse(
-                status_code=404, content={"message": "Plan no encontrado"}
+            logger.warning(
+                f"Intento de actualizar un plan no existente (ID: {plan_id})."
             )
-
-        # Actualización parcial de los datos.
-        if plan_data.name is not None:
-            plan_to_update.name = plan_data.name
-        if plan_data.speed_mbps is not None:
-            plan_to_update.speed_mbps = plan_data.speed_mbps
-        if plan_data.price is not None:
-            plan_to_update.price = plan_data.price
-
+            raise HTTPException(status_code=404, detail="Plan no encontrado")
+        update_data = plan_data.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(plan_to_update, key, value)
         db.commit()
-        db.refresh(
-            plan_to_update
-        )  # Refresca el objeto para devolver los datos actualizados.
-        return {"message": "Plan actualizado exitosamente", "plan": plan_to_update}
+        db.refresh(plan_to_update)
+        logger.info(f"Plan ID {plan_id} actualizado exitosamente.")
+        return {
+            "message": "Plan actualizado exitosamente",
+            "plan": PlanOut.model_validate(plan_to_update),
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        logger.error(
+            f"Error inesperado en update_plan (ID: {plan_id}): {e}", exc_info=True
+        )
+        raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
 
-@plan_router.delete(
-    "/admin/plans/delete/{plan_id}",
-    summary="Eliminar un plan de internet",
-    description="**Permisos requeridos: `administrador`**.<br>Elimina un plan de internet de la base de datos, solo si no tiene suscripciones activas.",
-)
+@plan_router.delete("/admin/plans/delete/{plan_id}")
 def delete_plan(
     plan_id: int, admin_user: dict = Depends(is_admin), db: Session = Depends(get_db)
 ):
-    """
-    Elimina un plan de internet, solo si no tiene suscripciones activas.
-    """
+    logger.info(
+        f"Admin '{admin_user.get('sub')}' intentando eliminar plan ID: {plan_id}."
+    )
     try:
-        # 1. Buscar el plan que se quiere eliminar
         plan_to_delete = (
             db.query(InternetPlan).filter(InternetPlan.id == plan_id).first()
         )
         if not plan_to_delete:
-            return JSONResponse(
-                status_code=404, content={"message": "Plan no encontrado"}
-            )
-
-        # 2. VERIFICACIÓN EXPLÍCITA: Contar cuántas suscripciones usan este plan.
+            logger.warning(f"Intento de eliminar un plan no existente (ID: {plan_id}).")
+            raise HTTPException(status_code=404, detail="Plan no encontrado")
         subscription_count = (
             db.query(Subscription).filter(Subscription.plan_id == plan_id).count()
         )
-
-        # 3. LÓGICA DE NEGOCIO: Si hay una o más suscripciones, denegar la eliminación.
         if subscription_count > 0:
-            return JSONResponse(
-                status_code=400,  # Bad Request
-                content={
-                    "message": f"No se puede eliminar el plan porque {subscription_count} cliente(s) están suscritos a él."
-                },
+            logger.warning(
+                f"Intento fallido de eliminar plan ID {plan_id}: tiene {subscription_count} suscripciones activas."
             )
-
-        # 4. Si no hay suscripciones, proceder con la eliminación.
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"No se puede eliminar el plan porque {subscription_count} cliente(s) están suscritos a él.",
+            )
         db.delete(plan_to_delete)
         db.commit()
+        logger.info(
+            f"Plan ID {plan_id} ('{plan_to_delete.name}') eliminado exitosamente."
+        )
         return {"message": f"Plan con ID {plan_id} eliminado exitosamente"}
-
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        logger.error(
+            f"Error inesperado en delete_plan (ID: {plan_id}): {e}", exc_info=True
+        )
+        raise HTTPException(status_code=500, detail="Error interno del servidor.")

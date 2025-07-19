@@ -2,105 +2,54 @@
 # -----------------------------------------------------------------------------
 # RUTAS DE GESTIÓN DE USUARIOS (REGISTRO Y LOGIN)
 # -----------------------------------------------------------------------------
-# Este módulo define los endpoints públicos para la interacción de los usuarios:
-# 1. Registrar un nuevo usuario (cliente) en el sistema.
-# 2. Iniciar sesión (login), que autentica al usuario y le devuelve los tokens.
-# -----------------------------------------------------------------------------
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+import logging
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from models.models import User, UserDetail, InputUser, InputLogin
+from models.models import User, InputLogin
 from auth.security import Security
-from sqlalchemy.orm import joinedload
 from config.db import get_db
 
-# Creación de un router específico para las rutas de usuarios.
+logger = logging.getLogger(__name__)
 user_router = APIRouter()
-
-
-@user_router.post("admin/users/add")
-def add_user(user_data: InputUser, db: Session = Depends(get_db)):
-    """
-    Registra un nuevo usuario (cliente) y sus detalles personales en la base de datos.
-    """
-    try:
-        # Se crea primero el objeto 'UserDetail' con los datos personales.
-        new_user_detail = UserDetail(
-            dni=user_data.dni,
-            firstname=user_data.firstname,
-            lastname=user_data.lastname,
-            address=user_data.address,
-            phone=user_data.phone,
-        )
-        # Se hashea la contraseña antes de guardarla. NUNCA se guarda en texto plano.
-        hashed_password = Security.get_password_hash(user_data.password)
-
-        # Se crea el objeto 'User' principal.
-        new_user = User(
-            username=user_data.username,
-            password=hashed_password,
-            email=user_data.email,
-            role="cliente",  # Por defecto, todos los nuevos registros son de tipo 'cliente'.
-        )
-
-        # Se vinculan los dos objetos a través de la relación de SQLAlchemy.
-        new_user.userdetail = new_user_detail
-
-        db.add(new_user)
-        db.commit()
-        return JSONResponse(
-            status_code=201, content={"message": "Cliente agregado exitosamente"}
-        )
-    except Exception as e:
-        db.rollback()
-        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @user_router.post(
     "/users/login",
     summary="Iniciar sesión",
-    description="**Permisos requeridos: `Público`**.<br>Autentica a un usuario con su nombre de usuario y contraseña. Si las credenciales son correctas, devuelve un `access_token` en el cuerpo y un `refresh_token` en una cookie httpOnly.",
 )
 def login(user_credentials: InputLogin, db: Session = Depends(get_db)):
-    """
-    Autentica a un usuario y, si tiene éxito, devuelve un token de acceso
-    y establece un token de actualización en una cookie segura.
-    """
+    username = user_credentials.username
+    logger.info(f"Intento de inicio de sesión para el usuario: '{username}'.")
     try:
-        # Busca al usuario por su nombre de usuario en la base de datos.
-        user_in_db = (
-            db.query(User).filter(User.username == user_credentials.username).first()
-        )
+        user_in_db = db.query(User).filter(User.username == username).first()
 
-        # Verifica si el usuario existe Y si la contraseña proporcionada es correcta.
         if not user_in_db or not Security.verify_password(
             user_credentials.password, user_in_db.password
         ):
-            return JSONResponse(
-                status_code=401,  # Unauthorized
-                content={
-                    "success": False,
-                    "message": "Usuario o contraseña incorrectos",
-                },
+            logger.warning(f"Credenciales incorrectas para el usuario: '{username}'.")
+            # Lanzamos la excepción de forma normal. FastAPI la manejará.
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Usuario o contraseña incorrectos",
             )
 
-        # Si las credenciales son correctas, se generan ambos tokens.
+        # Si todo va bien, continuamos...
+        logger.info(
+            f"Usuario '{username}' autenticado correctamente. Generando tokens."
+        )
         access_token = Security.generate_access_token(user_in_db)
         refresh_token = Security.generate_refresh_token(user_in_db)
 
-        # Se guarda el nuevo refresh token en la base de datos para la rotación de tokens.
         user_in_db.refresh_token = refresh_token
         db.commit()
 
-        # Se construye la respuesta.
         response_body = {
             "success": True,
             "access_token": access_token,
             "token_type": "bearer",
         }
         response = JSONResponse(content=response_body)
-        # Se establece la cookie 'httpOnly' con el refresh token.
         response.set_cookie(
             key="refresh_token",
             value=refresh_token,
@@ -108,9 +57,24 @@ def login(user_credentials: InputLogin, db: Session = Depends(get_db)):
             samesite="strict",
             secure=True,
         )
+        logger.info(
+            f"Tokens enviados y cookie de refresco establecida para '{username}'."
+        )
         return response
+
+    # --- CAMBIO IMPORTANTE AQUÍ ---
+    # Atrapamos primero la HTTPException y la volvemos a lanzar sin registrarla como error.
+    except HTTPException:
+        raise
+
+    # Atrapamos cualquier otra excepción que SÍ es un error inesperado.
     except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"success": False, "message": f"Error interno del servidor: {e}"},
+        db.rollback()  # Es importante hacer rollback en caso de error de BD.
+        logger.error(
+            f"Error inesperado durante el login del usuario '{username}': {e}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno del servidor.",
         )

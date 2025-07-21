@@ -1,106 +1,125 @@
 import { useRef, useState } from "react";
+import {
+  Box,
+  Button,
+  Flex,
+  FormControl,
+  FormLabel,
+  Input,
+  VStack,
+  Heading,
+  Text,
+  useColorModeValue,
+} from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
 
-// Define la estructura de la respuesta del backend
-type LoginProcessResponse = {
-  success: boolean;
-  access_token?: string;
-  token_type?: string;
-  message?: string;
-};
-
 function Login() {
-  // URL del endpoint de login en tu backend
-  const LOGIN_URL = "http://localhost:8000/api/users/login";
+  const navigate = useNavigate();
+  const formBg = useColorModeValue("gray.100", "gray.700");
 
-  // Referencias para los inputs del formulario
+  // Usamos useRef para obtener el valor de los inputs solo al enviar el formulario.
+  // Es eficiente porque no causa re-renders mientras el usuario escribe[cite: 147].
   const userInputRef = useRef<HTMLInputElement>(null);
   const passInputRef = useRef<HTMLInputElement>(null);
 
-  // Estado para manejar los mensajes al usuario
+  // Usamos useState para manejar los mensajes de error o éxito[cite: 269].
+  // Es la forma correcta en React, en lugar de manipular el DOM directamente[cite: 267].
   const [message, setMessage] = useState<string | null>(null);
 
-  // Hook para navegar a otras rutas
-  const navigate = useNavigate();
-
-  // Procesa la respuesta del backend
-  function loginProcess(dataObject: LoginProcessResponse) {
-    if (dataObject.success && dataObject.access_token) {
-      localStorage.setItem("token", dataObject.access_token);
-      // Podrías guardar también datos del usuario si el backend los devolviera
-      setMessage("Iniciando sesión...");
-      navigate("/dashboard"); // Redirige al dashboard
-    } else {
-      setMessage(dataObject.message ?? "Error desconocido");
-    }
-  }
-
-  // Maneja el envío del formulario
-  function handleLogin(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault(); // Evita que la página se recargue
+  // Esta función se ejecuta cuando el usuario envía el formulario.
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setMessage(null); // Limpia el mensaje anterior
 
     const username = userInputRef.current?.value ?? "";
     const password = passInputRef.current?.value ?? "";
 
+    // Valida que los campos no estén vacíos antes de enviar
+    if (!username || !password) {
+      setMessage("Por favor, completa ambos campos.");
+      return;
+    }
+
+    // --- Conexión Real con el Backend ---
+    const myHeaders = new Headers();
+    myHeaders.append("Content-Type", "application/json");
+
+    const body = JSON.stringify({ username, password });
+
     const requestOptions = {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
+      headers: myHeaders,
+      body: body,
     };
 
-    fetch(LOGIN_URL, requestOptions)
-      .then((response) => response.json())
-      .then((data: LoginProcessResponse) => loginProcess(data))
-      .catch((error) => {
-        console.error("Error en el fetch:", error);
-        setMessage("No se pudo conectar con el servidor.");
-      });
-  }
+    try {
+      // Apuntamos a la URL de tu backend. Asegúrate de que sea la correcta.
+      const response = await fetch(
+        "http://127.0.0.1:8000/api/users/login",
+        requestOptions
+      );
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        setMessage("Iniciando sesión...");
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("user", JSON.stringify(data.user));
+        navigate("/dashboard");
+      } else {
+        // Usa el mensaje de error del backend si existe, si no, uno genérico.
+        setMessage(data.message || "Usuario o contraseña incorrectos.");
+      }
+    } catch (error) {
+      console.error("Error al conectar con el servidor:", error);
+      setMessage(
+        "No se pudo conectar con el servidor. Revisa que el backend esté funcionando."
+      );
+    }
+    // --- Fin de la conexión ---
+  };
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
+    <Flex
+      align="center"
+      justify="center"
+      h="100vh"
+      bg={useColorModeValue("gray.50", "gray.800")}
     >
-      <div
-        className="card p-4 shadow-lg"
-        style={{ maxWidth: "400px", width: "100%" }}
-      >
-        <h1 className="text-center mb-3">Login</h1>
-        <form onSubmit={handleLogin}>
-          <div className="mb-3">
-            <label htmlFor="inputUser" className="form-label">
-              Usuario
-            </label>
-            <input
-              type="text"
-              className="form-control"
-              id="inputUser"
-              ref={userInputRef}
-              required
-            />
-          </div>
-          <div className="mb-4">
-            <label htmlFor="inputPassword">Contraseña</label>
-            <input
-              type="password"
-              className="form-control"
-              id="inputPassword"
-              ref={passInputRef}
-              required
-            />
-          </div>
-          <button type="submit" className="btn btn-primary w-100">
-            Ingresar
-          </button>
-          {message && <div className="mt-3 text-center">{message}</div>}
-        </form>
-      </div>
-    </div>
+      <Box bg={formBg} p={8} rounded="xl" shadow="lg" maxW="md" w="full">
+        <VStack spacing={4}>
+          <Heading color="brand.500">Bienvenido</Heading>
+          <Text>Ingresa a tu cuenta para continuar</Text>
+          <form onSubmit={handleLogin} style={{ width: "100%" }}>
+            <VStack spacing={6} mt={4}>
+              <FormControl isRequired>
+                <FormLabel>Usuario</FormLabel>
+                <Input type="text" ref={userInputRef} placeholder="ej: admin" />
+              </FormControl>
+              <FormControl isRequired>
+                <FormLabel>Contraseña</FormLabel>
+                <Input
+                  type="password"
+                  ref={passInputRef}
+                  placeholder="ej: 1234"
+                />
+              </FormControl>
+              <Button type="submit" colorScheme="brand" w="full" size="lg">
+                Ingresar
+              </Button>
+              {message && (
+                <Text
+                  color={
+                    message.includes("incorrectos") ? "red.500" : "green.500"
+                  }
+                >
+                  {message}
+                </Text>
+              )}
+            </VStack>
+          </form>
+        </VStack>
+      </Box>
+    </Flex>
   );
 }
 

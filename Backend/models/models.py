@@ -453,43 +453,6 @@ PERMISSIONS_LIST = [
 ]
 
 
-# Esta función se ejecuta después de que la tabla 'permissions' es creada
-@event.listens_for(Permission.__table__, "after_create")
-def insert_initial_permissions(target, connection, **kw):
-    connection.execute(target.insert(), PERMISSIONS_LIST)
-    print("Permisos iniciales sembrados en la base de datos.")
-
-
-# Esta función se ejecuta después de que la tabla 'roles' es creada
-@event.listens_for(Role.__table__, "after_create")
-def insert_initial_roles(target, connection, **kw):
-    # Creamos el rol de SuperAdmin
-    connection.execute(
-        target.insert(),
-        [
-            {
-                "name": "Super Administrador",
-                "description": "Tiene todos los permisos del sistema.",
-            }
-        ],
-    )
-    print("Rol de Super Administrador inicial sembrado.")
-
-    # Ahora asignamos TODOS los permisos a este rol
-    permissions = connection.execute(Permission.__table__.select()).fetchall()
-    super_admin_role = connection.execute(
-        Role.__table__.select().where(Role.name == "Super Administrador")
-    ).first()
-
-    if super_admin_role:
-        role_id = super_admin_role.id
-        for perm in permissions:
-            connection.execute(
-                role_permissions.insert().values(role_id=role_id, permission_id=perm.id)
-            )
-    print("Todos los permisos asignados al rol de Super Administrador.")
-
-
 class PermissionOut(BaseModel):
     """Schema de respuesta para un permiso."""
 

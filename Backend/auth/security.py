@@ -99,7 +99,7 @@ def get_current_user(
             "role": user.role_obj.name if user.role_obj else None,
             "permissions": user_permissions,
         }
-    except jwt.JWTError:
+    except jwt.PyJWTError:
         raise credentials_exception
 
 

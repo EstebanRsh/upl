@@ -1,23 +1,22 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Login from "./components/Login";
-import Dashboard from "./views/Dashboard";
-import PublicRoutes from "./router/PublicRoutes";
-import ProtectedRoutes from "./router/ProtectedRoutes";
+import PublicRoutes from "./components/router/PublicRoutes";
+import ProtectedRoutes from "./components/router/ProtectedRoutes";
+import Login from "./components/Login"; // Lo crearemos en el siguiente paso
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Rutas Públicas: solo accesibles si NO estás logueado */}
+        {/* Rutas Públicas */}
         <Route element={<PublicRoutes />}>
-          <Route path="/" element={<Login />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/" element={<Login />} />{" "}
+          {/* Ruta raíz también lleva al login */}
         </Route>
 
-        {/* Rutas Protegidas: solo accesibles si ESTÁS logueado */}
+        {/* Rutas Protegidas (Aquí agregarás tu Dashboard, etc.) */}
         <Route element={<ProtectedRoutes />}>
-          <Route path="/dashboard" element={<Dashboard />} />
-          {/* Aquí podrías agregar más rutas protegidas, como /perfil, /pagos, etc. */}
+          {/* Ejemplo: <Route path="/dashboard" element={<Dashboard />} /> */}
         </Route>
       </Routes>
     </BrowserRouter>

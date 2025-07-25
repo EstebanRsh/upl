@@ -1,16 +1,16 @@
-import { Box, Flex } from "@chakra-ui/react";
+// src/components/layouts/MainLayout.tsx
 import { Outlet } from "react-router-dom";
-import Sidebar from "./SideBar";
+import { Box } from "@chakra-ui/react";
+import Navbar from "./Navbar";
 
-function MainLayout() {
+export default function MainLayout() {
   return (
-    <Flex>
-      <Sidebar />
-      <Box flex="1" p="8">
+    <Box>
+      <Navbar />
+      <main>
+        {/* Outlet es el componente de react-router que renderiza la ruta hija */}
         <Outlet />
-      </Box>
-    </Flex>
+      </main>
+    </Box>
   );
 }
-
-export default MainLayout;

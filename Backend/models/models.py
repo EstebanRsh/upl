@@ -6,6 +6,7 @@
 # -----------------------------------------------------------------------------
 
 # Importaciones necesarias de SQLAlchemy, Pydantic y tipos de Python.
+from pydantic import BaseModel, ConfigDict
 from config.db import engine, Base
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float
 from sqlalchemy.orm import sessionmaker, relationship
@@ -344,6 +345,7 @@ class UserOut(BaseModel):
     phone: str
     phone2: str | None = None
     role: str
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PlanOut(BaseModel):

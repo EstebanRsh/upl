@@ -34,7 +34,6 @@ def login(user_credentials: InputLogin, db: Session = Depends(get_db)):
                 detail="Usuario o contraseña incorrectos",
             )
 
-        # Si todo va bien, continuamos...
         logger.info(
             f"Usuario '{username}' autenticado correctamente. Generando tokens."
         )
@@ -62,14 +61,11 @@ def login(user_credentials: InputLogin, db: Session = Depends(get_db)):
         )
         return response
 
-    # --- CAMBIO IMPORTANTE AQUÍ ---
-    # Atrapamos primero la HTTPException y la volvemos a lanzar sin registrarla como error.
     except HTTPException:
         raise
 
-    # Atrapamos cualquier otra excepción que SÍ es un error inesperado.
     except Exception as e:
-        db.rollback()  # Es importante hacer rollback en caso de error de BD.
+        db.rollback()
         logger.error(
             f"Error inesperado durante el login del usuario '{username}': {e}",
             exc_info=True,
@@ -102,8 +98,14 @@ def get_my_profile(
             status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado."
         )
 
-    # Usamos el modelo UserOut para devolver una respuesta limpia y segura
-    return UserOut.model_validate(user.userdetail)
+    user_data_for_response = {
+        **user.userdetail.__dict__,  # Copia todos los campos de userdetail
+        "username": user.username,  # Añade el username desde user
+        "email": user.email,  # Añade el email desde user
+        "role": user.role_obj.name,  # Añade el nombre del rol desde la relación
+    }
+
+    return UserOut.model_validate(user_data_for_response)
 
 
 @user_router.put(
@@ -124,7 +126,6 @@ def update_my_details(
         if not user_to_update or not user_to_update.userdetail:
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-        # model_dump() es el método nuevo en Pydantic v2
         update_data = user_data.model_dump(exclude_unset=True)
         if not update_data:
             raise HTTPException(

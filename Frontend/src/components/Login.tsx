@@ -1,126 +1,131 @@
-import { useRef, useState } from "react";
+// src/components/Login.tsx
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Box,
   Button,
-  Flex,
   FormControl,
   FormLabel,
   Input,
   VStack,
   Heading,
-  Text,
-  useColorModeValue,
+  useToast,
+  InputGroup,
+  InputRightElement,
 } from "@chakra-ui/react";
-import { useNavigate } from "react-router-dom";
 
-function Login() {
+type LoginResponse = {
+  success?: boolean;
+  access_token?: string;
+  detail?: string;
+};
+
+export default function Login() {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
-  const formBg = useColorModeValue("gray.100", "gray.700");
+  const toast = useToast();
+  const LOGIN_URL = `http://localhost:8000/api/users/login`;
 
-  // Usamos useRef para obtener el valor de los inputs solo al enviar el formulario.
-  // Es eficiente porque no causa re-renders mientras el usuario escribe[cite: 147].
-  const userInputRef = useRef<HTMLInputElement>(null);
-  const passInputRef = useRef<HTMLInputElement>(null);
-
-  // Usamos useState para manejar los mensajes de error o éxito[cite: 269].
-  // Es la forma correcta en React, en lugar de manipular el DOM directamente[cite: 267].
-  const [message, setMessage] = useState<string | null>(null);
-
-  // Esta función se ejecuta cuando el usuario envía el formulario.
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setMessage(null); // Limpia el mensaje anterior
-
-    const username = userInputRef.current?.value ?? "";
-    const password = passInputRef.current?.value ?? "";
-
-    // Valida que los campos no estén vacíos antes de enviar
-    if (!username || !password) {
-      setMessage("Por favor, completa ambos campos.");
-      return;
-    }
-
-    // --- Conexión Real con el Backend ---
-    const myHeaders = new Headers();
-    myHeaders.append("Content-Type", "application/json");
-
-    const body = JSON.stringify({ username, password });
-
-    const requestOptions = {
-      method: "POST",
-      headers: myHeaders,
-      body: body,
-    };
+    setIsLoading(true);
 
     try {
-      // Apuntamos a la URL de tu backend. Asegúrate de que sea la correcta.
-      const response = await fetch(
-        "http://127.0.0.1:8000/api/users/login",
-        requestOptions
-      );
-      const data = await response.json();
+      const response = await fetch(LOGIN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username, password: password }),
+      });
 
-      if (response.ok && data.success) {
-        setMessage("Iniciando sesión...");
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("user", JSON.stringify(data.user));
+      const data: LoginResponse = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || `Error: ${response.statusText}`);
+      }
+
+      if (data.success && data.access_token) {
+        localStorage.setItem("token", data.access_token);
+        localStorage.removeItem("user");
+        toast({
+          title: "Inicio de sesión exitoso.",
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
         navigate("/dashboard");
       } else {
-        // Usa el mensaje de error del backend si existe, si no, uno genérico.
-        setMessage(data.message || "Usuario o contraseña incorrectos.");
+        throw new Error("La respuesta del servidor no fue la esperada.");
       }
-    } catch (error) {
-      console.error("Error al conectar con el servidor:", error);
-      setMessage(
-        "No se pudo conectar con el servidor. Revisa que el backend esté funcionando."
-      );
+    } catch (error: any) {
+      toast({
+        title: "Error al iniciar sesión",
+        description: error.message,
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsLoading(false);
     }
-    // --- Fin de la conexión ---
   };
 
   return (
-    <Flex
-      align="center"
-      justify="center"
-      h="100vh"
-      bg={useColorModeValue("gray.50", "gray.800")}
+    <Box
+      display="flex"
+      alignItems="center"
+      justifyContent="center"
+      height="100vh"
+      bg="gray.100"
     >
-      <Box bg={formBg} p={8} rounded="xl" shadow="lg" maxW="md" w="full">
-        <VStack spacing={4}>
-          <Heading color="brand.500">Bienvenido</Heading>
-          <Text>Ingresa a tu cuenta para continuar</Text>
-          <form onSubmit={handleLogin} style={{ width: "100%" }}>
-            <VStack spacing={6} mt={4}>
-              <FormControl isRequired>
-                <FormLabel>Usuario</FormLabel>
-                <Input type="text" ref={userInputRef} placeholder="ej: admin" />
-              </FormControl>
-              <FormControl isRequired>
-                <FormLabel>Contraseña</FormLabel>
+      <Box bg="white" p={8} rounded="md" shadow="md" width="100%" maxW="md">
+        <form onSubmit={handleLogin}>
+          <VStack spacing={4}>
+            <Heading as="h1" size="lg">
+              Iniciar Sesión
+            </Heading>
+            <FormControl isRequired>
+              <FormLabel htmlFor="username">Usuario</FormLabel>
+              <Input
+                id="username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+              />
+            </FormControl>
+            <FormControl isRequired>
+              <FormLabel htmlFor="password">Contraseña</FormLabel>
+              <InputGroup>
                 <Input
-                  type="password"
-                  ref={passInputRef}
-                  placeholder="ej: 1234"
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                 />
-              </FormControl>
-              <Button type="submit" colorScheme="brand" w="full" size="lg">
-                Ingresar
-              </Button>
-              {message && (
-                <Text
-                  color={
-                    message.includes("incorrectos") ? "red.500" : "green.500"
-                  }
-                >
-                  {message}
-                </Text>
-              )}
-            </VStack>
-          </form>
-        </VStack>
+                <InputRightElement width="4.5rem">
+                  <Button
+                    h="1.75rem"
+                    size="sm"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? "Ocultar" : "Mostrar"}
+                  </Button>
+                </InputRightElement>
+              </InputGroup>
+            </FormControl>
+            <Button
+              type="submit"
+              colorScheme="teal"
+              width="full"
+              isLoading={isLoading}
+            >
+              Ingresar
+            </Button>
+          </VStack>
+        </form>
       </Box>
-    </Flex>
+    </Box>
   );
 }
-
-export default Login;

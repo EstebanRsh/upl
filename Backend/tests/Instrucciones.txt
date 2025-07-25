@@ -1,2 +1,0 @@
-### PARA REALIAZAR PRUEBAS Y GUARDAR LOS RESULTADOS ###
-pytest --html=tests/test_reports/report.html --self-contained-html

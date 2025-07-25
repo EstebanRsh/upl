@@ -98,14 +98,20 @@ def get_my_profile(
             status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado."
         )
 
-    user_data_for_response = {
-        **user.userdetail.__dict__,  # Copia todos los campos de userdetail
-        "username": user.username,  # Añade el username desde user
-        "email": user.email,  # Añade el email desde user
-        "role": user.role_obj.name,  # Añade el nombre del rol desde la relación
-    }
-
-    return UserOut.model_validate(user_data_for_response)
+    user_response = UserOut(
+        username=user.username,
+        email=user.email,
+        dni=user.userdetail.dni,
+        firstname=user.userdetail.firstname,
+        lastname=user.userdetail.lastname,
+        address=user.userdetail.address,
+        barrio=user.userdetail.barrio,
+        city=user.userdetail.city,
+        phone=user.userdetail.phone,
+        phone2=user.userdetail.phone2,
+        role=user.role_obj.name,
+    )
+    return user_response
 
 
 @user_router.put(

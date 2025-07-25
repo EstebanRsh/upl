@@ -342,6 +342,8 @@ class UserOut(BaseModel):
     firstname: str
     lastname: str
     address: str
+    barrio: str | None = None
+    city: str | None = None
     phone: str
     phone2: str | None = None
     role: str

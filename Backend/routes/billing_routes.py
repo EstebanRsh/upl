@@ -1,7 +1,4 @@
 # routes/billing_routes.py
-# -----------------------------------------------------------------------------
-# RUTAS DE FACTURACIÓN Y REGLAS DE NEGOCIO
-# -----------------------------------------------------------------------------
 import logging
 import datetime
 import os
@@ -24,19 +21,12 @@ from config.db import get_db
 logger = logging.getLogger(__name__)
 billing_router = APIRouter()
 
-# -----------------------------------------------------------------------------
-# LÓGICA DE NEGOCIO (Separada para poder reutilizarla)
-# -----------------------------------------------------------------------------
+# --- Lógica de negocio y tareas programadas (sin cambios) ---
 
 
 def generate_monthly_invoices_logic(db: Session):
-    """
-    Contiene la lógica principal para generar facturas.
-    Puede ser llamada por un job automático o un endpoint manual.
-    """
+    # ... (código sin cambios)
     logger.info("Iniciando la lógica de generación de facturas mensuales.")
-
-    # 1. Comprobar si la automatización está activada
     automation_setting = (
         db.query(BusinessSettings)
         .filter_by(setting_name="auto_invoicing_enabled")
@@ -51,20 +41,16 @@ def generate_monthly_invoices_logic(db: Session):
             "facturas_generadas": 0,
             "facturas_omitidas": 0,
         }
-
-    # 2. Lógica de generación de facturas
     payment_window_setting = (
         db.query(BusinessSettings).filter_by(setting_name="payment_window_days").first()
     )
     if not payment_window_setting:
         logger.error("La regla 'payment_window_days' no está configurada.")
         return {"error": "La regla 'payment_window_days' no está configurada."}
-
     payment_window_days = int(payment_window_setting.setting_value)
     active_subscriptions = db.query(Subscription).filter_by(status="active").all()
     generated_count, skipped_count = 0, 0
     today = datetime.date.today()
-
     for sub in active_subscriptions:
         if (
             db.query(Invoice)
@@ -77,7 +63,6 @@ def generate_monthly_invoices_logic(db: Session):
         ):
             skipped_count += 1
             continue
-
         new_invoice = Invoice(
             user_id=sub.user_id,
             subscription_id=sub.id,
@@ -87,7 +72,6 @@ def generate_monthly_invoices_logic(db: Session):
         )
         db.add(new_invoice)
         generated_count += 1
-
     db.commit()
     logger.info(
         f"Facturación completada. Generadas: {generated_count}, Omitidas: {skipped_count}."
@@ -99,15 +83,8 @@ def generate_monthly_invoices_logic(db: Session):
     }
 
 
-# -----------------------------------------------------------------------------
-# TAREA y ENDPOINTS
-# -----------------------------------------------------------------------------
-
-
 def generate_monthly_invoices_job(db: Session):
-    """
-    Esta es la función que el scheduler de app.py llamará.
-    """
+    # ... (código sin cambios)
     logger.info("Ejecutando TAREA PROGRAMADA: Generación de facturas mensuales.")
     try:
         generate_monthly_invoices_logic(db)
@@ -124,9 +101,7 @@ def generate_monthly_invoices_job(db: Session):
     dependencies=[Depends(has_permission("billing:generate_invoices"))],
 )
 def generate_monthly_invoices_manual(db: Session = Depends(get_db)):
-    """
-    Endpoint para que un administrador ejecute la facturación manualmente.
-    """
+    # ... (código sin cambios)
     logger.info("Invocación MANUAL de la generación de facturas.")
     result = generate_monthly_invoices_logic(db)
     if "error" in result:
@@ -138,6 +113,7 @@ def generate_monthly_invoices_manual(db: Session = Depends(get_db)):
     "/admin/settings/set", dependencies=[Depends(has_permission("roles:manage"))]
 )
 def set_business_setting(setting_data: Setting, db: Session = Depends(get_db)):
+    # ... (código sin cambios)
     logger.info(f"Estableciendo regla de negocio: '{setting_data.setting_name}'.")
     try:
         setting = (
@@ -158,6 +134,7 @@ def set_business_setting(setting_data: Setting, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
 
+# --- INICIO DE LA CORRECCIÓN CLAVE ---
 @billing_router.get("/invoices/{invoice_id}/download")
 def download_invoice_pdf(
     invoice_id: int,
@@ -181,15 +158,30 @@ def download_invoice_pdf(
                 status_code=403, detail="No tienes permiso para descargar esta factura."
             )
 
-        if not invoice.receipt_pdf_url or not os.path.exists(invoice.receipt_pdf_url):
+        if not invoice.receipt_pdf_url:
             raise HTTPException(
-                status_code=404, detail="El archivo PDF del recibo no fue encontrado."
+                status_code=404, detail="La factura no tiene un recibo asociado."
+            )
+
+        # Reconstruimos la ruta completa del archivo uniendo el directorio base 'facturas'
+        # con la ruta relativa que viene de la base de datos.
+        full_file_path = os.path.join("facturas", invoice.receipt_pdf_url)
+
+        logger.info(f"Ruta completa del archivo a buscar: '{full_file_path}'")
+
+        if not os.path.exists(full_file_path):
+            logger.error(
+                f"El archivo PDF no fue encontrado en la ruta física: {full_file_path}"
+            )
+            raise HTTPException(
+                status_code=404,
+                detail="El archivo PDF del recibo no fue encontrado en el servidor.",
             )
 
         return FileResponse(
-            path=invoice.receipt_pdf_url,
+            path=full_file_path,
             media_type="application/pdf",
-            filename=os.path.basename(invoice.receipt_pdf_url),
+            filename=os.path.basename(full_file_path),
         )
     except HTTPException:
         raise
@@ -200,11 +192,15 @@ def download_invoice_pdf(
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
 
+# --- FIN DE LA CORRECCIÓN CLAVE ---
+
+
 @billing_router.post(
     "/admin/invoices/process-overdue",
     dependencies=[Depends(has_permission("billing:process_overdue"))],
 )
 def process_overdue_invoices(db: Session = Depends(get_db)):
+    # ... (código sin cambios)
     logger.info("Iniciando el procesamiento de facturas vencidas.")
     try:
         late_fee_setting = (
@@ -220,18 +216,15 @@ def process_overdue_invoices(db: Session = Depends(get_db)):
                 status_code=400,
                 detail="Faltan reglas de negocio para procesar vencidas.",
             )
-
         late_fee = float(late_fee_setting.setting_value)
         days_for_suspension = int(suspension_days_setting.setting_value)
         today = datetime.date.today()
-
         overdue_invoices = (
             db.query(Invoice)
             .filter(Invoice.status == "pending", Invoice.due_date < today)
             .all()
         )
         processed_count, suspended_count = 0, 0
-
         for invoice in overdue_invoices:
             if invoice.late_fee == 0.0:
                 invoice.late_fee = late_fee
@@ -240,7 +233,6 @@ def process_overdue_invoices(db: Session = Depends(get_db)):
             if (today - invoice.due_date.date()).days >= days_for_suspension:
                 invoice.subscription.status = "suspended"
                 suspended_count += 1
-
         db.commit()
         return {
             "message": "Proceso de vencidas completado.",
@@ -261,12 +253,15 @@ def process_overdue_invoices(db: Session = Depends(get_db)):
 def get_my_invoices(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
+    month: int = Query(None, ge=1, le=12),
+    year: int = Query(None, ge=2020),
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # ... (código sin cambios)
     user_id = current_user.get("user_id")
     logger.info(
-        f"Usuario ID {user_id} solicitando historial de facturas (Página: {page})."
+        f"Usuario ID {user_id} solicitando facturas (Página: {page}, Mes: {month}, Año: {year})."
     )
     try:
         query = (
@@ -274,6 +269,10 @@ def get_my_invoices(
             .filter_by(user_id=user_id)
             .order_by(Invoice.issue_date.desc())
         )
+        if month:
+            query = query.filter(extract("month", Invoice.issue_date) == month)
+        if year:
+            query = query.filter(extract("year", Invoice.issue_date) == year)
         total_items = query.count()
         invoices = query.offset((page - 1) * size).limit(size).all()
         return PaginatedResponse(

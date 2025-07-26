@@ -24,6 +24,7 @@ from routes.admin_routes import admin_router
 from routes.token_routes import token_router
 from routes.billing_routes import billing_router
 from routes.role_routes import role_router
+from routes.invoice_routes import invoice_router
 from models import models
 import logging
 from core.logging_config import setup_logging
@@ -145,6 +146,8 @@ app.include_router(admin_router, prefix="/api/admin", tags=["Administración"])
 app.include_router(token_router, prefix="/api", tags=["Token"])
 app.include_router(billing_router, prefix="/api", tags=["Facturación"])
 app.include_router(role_router, prefix="/api/admin", tags=["Roles y Permisos"])
+app.include_router(invoice_router, prefix="/api", tags=["Facturación"])
+app.mount("/facturas", StaticFiles(directory="facturas"), name="facturas")
 
 
 @app.get("/")

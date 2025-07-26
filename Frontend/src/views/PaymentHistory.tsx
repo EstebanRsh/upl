@@ -1,175 +1,240 @@
+// src/views/PaymentHistory.tsx
+import { useState, useEffect, useRef } from "react";
 import {
   Box,
   Heading,
-  Table,
-  Thead,
-  Tbody,
-  Tr,
-  Th,
-  Td,
-  TableContainer,
+  VStack,
   Spinner,
-  Text,
   Alert,
   AlertIcon,
+  useToast,
+  HStack,
 } from "@chakra-ui/react";
-import { useEffect, useState } from "react";
+import { InvoiceFilter } from "../components/payments/InvoiceFilter";
+import { InvoiceList } from "../components/payments/InvoiceList";
+import { Pagination } from "../components/payments/Pagination";
 
-// Definimos la estructura de un objeto de pago, basándonos en tu backend
-interface Payment {
-  id_pago: number;
-  monto: number;
-  "afecha de pago": string; // Mantenemos el nombre del campo como en tu backend
-  mes_pagado: string;
-}
+// Se exporta el tipo para que otros componentes como InvoiceList puedan importarlo.
+export type Invoice = {
+  id: number;
+  issue_date: string;
+  due_date: string;
+  total_amount: number;
+  status: "pending" | "paid" | "overdue" | "in_review";
+  receipt_pdf_url: string | null;
+  user_receipt_url: string | null;
+};
 
 function PaymentHistory() {
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isPaginating, setIsPaginating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
-  useEffect(() => {
-    const fetchPayments = async () => {
-      //const token = localStorage.getItem('token');
-      // Cuando tu backend esté listo, reemplazarás esto con el fetch real
-      // const PAYMENTS_URL = "http://localhost:8000/payment/user";
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [filters, setFilters] = useState({ month: "", year: "" });
 
-      try {
-        // --- INICIO: DATOS DE EJEMPLO (reemplazar con fetch) ---
-        await new Promise((resolve) => setTimeout(resolve, 1000)); // Simula retraso de red
-        const mockData: Payment[] = [
-          {
-            id_pago: 1,
-            monto: 3500.5,
-            "afecha de pago": "2025-07-10T14:30:00Z",
-            mes_pagado: "2025-07-01",
-          },
-          {
-            id_pago: 2,
-            monto: 3500.5,
-            "afecha de pago": "2025-06-09T11:00:00Z",
-            mes_pagado: "2025-06-01",
-          },
-          {
-            id_pago: 3,
-            monto: 3400.0,
-            "afecha de pago": "2025-05-11T10:15:00Z",
-            mes_pagado: "2025-05-01",
-          },
-        ];
-        setPayments(mockData);
-        // --- FIN: DATOS DE EJEMPLO ---
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(
+    null
+  );
 
-        /* --- CÓDIGO FETCH REAL (para cuando lo conectes) ---
-        if (!token) {
-          throw new Error("No se pudo verificar la sesión.");
-        }
-        const response = await fetch(PAYMENTS_URL, {
-          headers: { 'Authorization': `Bearer ${token}` },
-        });
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.detail || 'No se pudieron cargar los pagos.');
-        }
-        const data = await response.json();
-        setPayments(data);
-        */
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setIsLoading(false);
+  // Se define la función fetchInvoices DENTRO del componente para que tenga acceso a los estados.
+  const fetchInvoices = async (page: number, month: string, year: string) => {
+    const isFirstLoad =
+      page === 1 &&
+      filters.month === "" &&
+      filters.year === "" &&
+      invoices.length === 0;
+    if (isFirstLoad) {
+      setIsInitialLoading(true);
+    } else {
+      setIsPaginating(true);
+    }
+    setError(null);
+
+    const token = localStorage.getItem("token");
+    let url = `http://localhost:8000/api/users/me/invoices?page=${page}&size=5`;
+    if (month) url += `&month=${month}`;
+    if (year) url += `&year=${year}`;
+
+    try {
+      if (!token) throw new Error("No se encontró token de sesión.");
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.detail || "No se pudieron cargar las facturas."
+        );
       }
-    };
-
-    fetchPayments();
-  }, []);
-
-  // Funciones para formatear los datos y que se vean mejor
-  const formatCurrency = (amount: number) => {
-    return amount.toLocaleString("es-AR", {
-      style: "currency",
-      currency: "ARS",
-    });
+      const data = await response.json();
+      setInvoices(data.items);
+      setTotalPages(data.total_pages);
+      setCurrentPage(data.current_page);
+    } catch (err: any) {
+      setError(err.message);
+      setInvoices([]);
+    } finally {
+      setIsInitialLoading(false);
+      setIsPaginating(false);
+    }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("es-AR", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
+  // useEffect ahora solo se encarga de llamar a fetchInvoices cuando algo cambia.
+  useEffect(() => {
+    fetchInvoices(currentPage, filters.month, filters.year);
+  }, [currentPage, filters]);
+
+  const handleFilterChange = (month: string, year: string) => {
+    setCurrentPage(1);
+    setFilters({ month, year });
   };
 
-  const formatMonth = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("es-AR", {
-      year: "numeric",
-      month: "long",
-      timeZone: "UTC", // Importante para evitar corrimientos de día
+  const handleDownloadReceipt = async (invoiceId: number) => {
+    const token = localStorage.getItem("token");
+    const DOWNLOAD_URL = `http://localhost:8000/api/invoices/${invoiceId}/download`;
+    const toastId = toast({
+      title: "Preparando descarga...",
+      status: "info",
+      duration: null,
+      isClosable: true,
     });
+    try {
+      const response = await fetch(DOWNLOAD_URL, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "No se pudo descargar el recibo.");
+      }
+      const contentDisposition = response.headers.get("content-disposition");
+      let filename = `recibo_${invoiceId}.pdf`;
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+        if (filenameMatch?.[1]) filename = filenameMatch[1];
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      toast.update(toastId, {
+        title: "Descarga iniciada",
+        status: "success",
+        duration: 3000,
+      });
+    } catch (err: any) {
+      toast.update(toastId, {
+        title: "Error de descarga",
+        description: err.message,
+        status: "error",
+        duration: 5000,
+      });
+    }
   };
 
-  if (isLoading) {
-    return (
-      <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        height="60vh"
-      >
-        <Spinner size="xl" />
-      </Box>
-    );
-  }
+  const handleUploadClick = (invoiceId: number) => {
+    setSelectedInvoiceId(invoiceId);
+    fileInputRef.current?.click();
+  };
 
-  if (error) {
-    return (
-      <Box p={8}>
-        <Alert status="error">
-          <AlertIcon />
-          {error}
-        </Alert>
-      </Box>
-    );
-  }
+  const handleFileChange = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file || !selectedInvoiceId) return;
+    const UPLOAD_URL = `http://localhost:8000/api/invoices/${selectedInvoiceId}/upload-receipt`;
+    const token = localStorage.getItem("token");
+    const formData = new FormData();
+    formData.append("file", file);
+    const toastId = toast({
+      title: "Subiendo archivo...",
+      status: "info",
+      duration: null,
+    });
+    try {
+      const response = await fetch(UPLOAD_URL, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok)
+        throw new Error(data.detail || "Error al subir el archivo.");
+      toast.update(toastId, {
+        title: "Éxito",
+        description: data.message,
+        status: "success",
+        duration: 5000,
+      });
+      fetchInvoices(currentPage, filters.month, filters.year);
+    } catch (err: any) {
+      toast.update(toastId, {
+        title: "Error",
+        description: err.message,
+        status: "error",
+        duration: 5000,
+      });
+    } finally {
+      if (event.target) event.target.value = "";
+    }
+  };
 
   return (
-    <Box p={8}>
-      <Heading as="h1" size="xl" mb={6}>
-        Historial de Pagos
-      </Heading>
-      <TableContainer bg="gray.700" color="white" borderRadius="md">
-        <Table variant="simple">
-          <Thead>
-            <Tr>
-              <Th color="white">Mes Correspondiente</Th>
-              <Th color="white">Fecha de Pago</Th>
-              <Th isNumeric color="white">
-                Monto
-              </Th>
-            </Tr>
-          </Thead>
-          <Tbody>
-            {payments.length > 0 ? (
-              payments.map((pay) => (
-                <Tr key={pay.id_pago}>
-                  <Td>{formatMonth(pay.mes_pagado)}</Td>
-                  <Td>{formatDate(pay["afecha de pago"])}</Td>
-                  <Td isNumeric fontWeight="bold">
-                    {formatCurrency(pay.monto)}
-                  </Td>
-                </Tr>
-              ))
-            ) : (
-              <Tr>
-                <Td colSpan={3} textAlign="center">
-                  <Text p={4}>No tienes pagos registrados.</Text>
-                </Td>
-              </Tr>
-            )}
-          </Tbody>
-        </Table>
-      </TableContainer>
+    <Box
+      p={{ base: 4, md: 8 }}
+      bg="gray.800"
+      color="white"
+      minH="calc(100vh - 4rem)"
+    >
+      <VStack spacing={6} align="stretch" maxW="1200px" mx="auto">
+        <HStack justify="space-between" wrap="wrap" gap={4}>
+          <Heading as="h1" size="xl">
+            Mis Facturas
+          </Heading>
+          <InvoiceFilter onFilterChange={handleFilterChange} />
+        </HStack>
+
+        {isInitialLoading ? (
+          <Box display="flex" justifyContent="center" py={10}>
+            <Spinner size="xl" />
+          </Box>
+        ) : error ? (
+          <Alert status="error" mt={4}>
+            <AlertIcon />
+            {error}
+          </Alert>
+        ) : (
+          <InvoiceList
+            invoices={invoices}
+            onUploadClick={handleUploadClick}
+            onDownloadClick={handleDownloadReceipt}
+            isLoading={isPaginating}
+          />
+        )}
+
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+          isLoading={isPaginating}
+        />
+      </VStack>
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        style={{ display: "none" }}
+        accept="application/pdf,image/png,image/jpeg"
+      />
     </Box>
   );
 }

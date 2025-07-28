@@ -1,131 +1,95 @@
-# auth/security.py
-import logging
-import os
-from dotenv import load_dotenv
+# Backend/auth/security.py
 import datetime
-import pytz
 import jwt
-import uuid
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+import logging
 from passlib.context import CryptContext
-from sqlalchemy.orm import Session, joinedload
+from fastapi import Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from models.models import User
 from config.db import get_db
-from models.models import User, Role  # Importamos los modelos necesarios
+from fastapi.security import OAuth2PasswordBearer
 
-load_dotenv()
+logger = logging.getLogger(__name__)
+
+# --- Configuración de Seguridad ---
+SECRET_KEY = "tu_clave_secreta_aqui_deberia_ser_mas_larga_y_compleja"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 8  # 8 horas
+REFRESH_TOKEN_EXPIRE_DAYS = 7  # 7 días
+
+# Contexto para encriptar contraseñas usando el método seguro bcrypt
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/users/login")
-logger = logging.getLogger(__name__)
 
 
 class Security:
-    """Clase que encapsula toda la lógica de seguridad."""
-
-    secret = os.getenv("JWT_SECRET_KEY")
+    @staticmethod
+    def get_password_hash(password: str) -> str:
+        """Genera el hash encriptado de una contraseña."""
+        return pwd_context.hash(password)
 
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
+        """Verifica una contraseña plana contra su versión encriptada."""
         return pwd_context.verify(plain_password, hashed_password)
 
     @staticmethod
-    def get_password_hash(password: str) -> str:
-        return pwd_context.hash(password)
+    def _create_token(data: dict, expires_delta: datetime.timedelta) -> str:
+        to_encode = data.copy()
+        expire = datetime.datetime.utcnow() + expires_delta
+        to_encode.update({"exp": expire})
+        return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-    @classmethod
-    def generate_access_token(cls, authUser: User) -> str:
-        """Genera un TOKEN DE ACCESO de corta duración."""
-        hoy = datetime.datetime.now(pytz.timezone("America/Buenos_Aires"))
-
-        # --- CORREGIDO: Usamos la relación para obtener el nombre del rol ---
-        role_name = authUser.role_obj.name if authUser.role_obj else None
-
+    @staticmethod
+    def generate_access_token(user: User) -> str:
+        """Genera un nuevo token de acceso para un usuario."""
+        permissions = (
+            {perm.name for perm in user.role_obj.permissions}
+            if user.role_obj
+            else set()
+        )
+        access_token_expires = datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         payload = {
-            "exp": hoy + datetime.timedelta(minutes=30),
-            "iat": hoy,
-            "sub": authUser.username,
-            "user_id": authUser.id,
-            "role": role_name,  # <-- Se usa la variable corregida
-            "jti": str(uuid.uuid4()),
+            "sub": user.username,
+            "user_id": user.id,
+            "role": user.role_obj.name if user.role_obj else None,
+            "permissions": list(permissions),
         }
-        return jwt.encode(payload, cls.secret, algorithm="HS256")
+        return Security._create_token(payload, access_token_expires)
 
-    @classmethod
-    def generate_refresh_token(cls, authUser: User) -> str:
-        """Genera un TOKEN DE ACTUALIZACIÓN de larga duración."""
-        hoy = datetime.datetime.now(pytz.timezone("America/Buenos_Aires"))
-        payload = {
-            "exp": hoy + datetime.timedelta(days=1),
-            "iat": hoy,
-            "sub": authUser.username,
-            "jti": str(uuid.uuid4()),
-        }
-        return jwt.encode(payload, cls.secret, algorithm="HS256")
+    @staticmethod
+    def generate_refresh_token(user: User) -> str:
+        """Genera un nuevo refresh token para un usuario."""
+        refresh_token_expires = datetime.timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+        payload = {"sub": user.username}
+        return Security._create_token(payload, refresh_token_expires)
 
 
-def get_current_user(
-    token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
-):
-    """
-    Decodifica el token JWT, obtiene el usuario de la BD y sus permisos.
-    """
+# --- Dependencias para Rutas ---
+def get_current_user(token: str = Depends(oauth2_scheme)) -> dict:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="No se pudieron validar las credenciales",
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, Security.secret, algorithms=["HS256"])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
             raise credentials_exception
-
-        user = (
-            db.query(User)
-            .options(joinedload(User.role_obj).joinedload(Role.permissions))
-            .filter(User.username == username)
-            .first()
-        )
-        if user is None:
-            raise credentials_exception
-
-        user_permissions = (
-            {p.name for p in user.role_obj.permissions} if user.role_obj else set()
-        )
-
-        return {
-            "user_id": user.id,
-            "sub": user.username,
-            "role": user.role_obj.name if user.role_obj else None,
-            "permissions": user_permissions,
-        }
+        return payload
     except jwt.PyJWTError:
         raise credentials_exception
 
 
-def is_admin(current_user: dict = Depends(get_current_user)):
-    """[DEPRECADO] Reemplazar por has_permission."""
-    if current_user.get("role") != "Super Administrador":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes."
-        )
-    return current_user
-
-
 def has_permission(required_permission: str):
-    """
-    Crea una dependencia que verifica si el usuario tiene un permiso específico.
-    """
-
-    def permission_checker(current_user: dict = Depends(get_current_user)):
-        if required_permission not in current_user.get("permissions", set()):
-            logger.warning(
-                f"Acceso denegado para '{current_user.get('sub')}'. Permiso requerido: '{required_permission}'."
-            )
+    def permission_checker(current_user: dict = Depends(get_current_user)) -> bool:
+        user_permissions = current_user.get("permissions", [])
+        if required_permission not in user_permissions:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"No tienes permiso para realizar esta acción.",
+                detail="No tienes los permisos necesarios.",
             )
-        return current_user
+        return True
 
     return permission_checker

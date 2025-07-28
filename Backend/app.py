@@ -29,6 +29,7 @@ from models import models
 import logging
 from core.logging_config import setup_logging
 from routes.billing_routes import generate_monthly_invoices_job
+from core.init_data import create_initial_roles_and_permissions
 
 # Llama a la función para configurar el logging al inicio de la app.
 setup_logging()
@@ -102,7 +103,11 @@ def get_db_for_job():
 async def startup_event():
     """Evento que se ejecuta al iniciar la aplicación."""
     logger.info("La aplicación se ha iniciado.")
-
+    db = SessionLocal()
+    try:
+        create_initial_roles_and_permissions(db)
+    finally:
+        db.close()
     # Iniciar el programador
     scheduler.start()
 

@@ -341,10 +341,10 @@ class UserOut(BaseModel):
     dni: int
     firstname: str
     lastname: str
-    address: str
+    address: str | None = None
     barrio: str | None = None
     city: str | None = None
-    phone: str
+    phone: str | None = None
     phone2: str | None = None
     role: str
     model_config = ConfigDict(from_attributes=True)

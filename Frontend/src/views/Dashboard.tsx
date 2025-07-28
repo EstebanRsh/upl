@@ -1,5 +1,6 @@
+// src/views/Dashboard.tsx
 import { useState, useEffect } from "react";
-import { Link as RouterLink } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 import {
   Box,
   Heading,
@@ -15,16 +16,13 @@ import {
   AlertIcon,
 } from "@chakra-ui/react";
 
-// Definimos un tipo para la información del usuario que leeremos del backend
+// --- INICIO DE LA CORRECCIÓN CLAVE ---
 type UserInfo = {
   first_name: string;
-  last_name: string;
-  role: {
-    name: "cliente" | "admin"; // Basado en el modelo de UPL
-  };
+  role: string; // El rol ahora es un string simple
 };
+// --- FIN DE LA CORRECCIÓN CLAVE ---
 
-// Componente reutilizable para las tarjetas del dashboard
 const DashboardCard = ({
   to,
   title,
@@ -57,34 +55,35 @@ function Dashboard() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchUserData = async () => {
       const token = localStorage.getItem("token");
-      // Endpoint para obtener los datos del usuario logueado en tu backend UPL
       const USER_ME_URL = "http://localhost:8000/api/users/me";
-
       try {
-        if (!token) {
-          throw new Error(
-            "No se encontró token de sesión. Por favor, inicie sesión de nuevo."
-          );
-        }
-
+        if (!token) throw new Error("No se encontró token de sesión.");
         const response = await fetch(USER_ME_URL, {
           headers: { Authorization: `Bearer ${token}` },
         });
-
         if (!response.ok) {
           const errorData = await response.json();
           throw new Error(
-            errorData.detail || "No se pudieron cargar los datos del usuario."
+            errorData.detail || "No se pudieron cargar los datos."
           );
         }
-
         const data: UserInfo = await response.json();
+
+        // --- INICIO DE LA CORRECCIÓN CLAVE ---
+        // Comprobamos si el rol es Admin o Gerente
+        if (data.role === "Admin" || data.role === "Gerente") {
+          localStorage.setItem("user", JSON.stringify(data)); // Guardamos los datos antes de redirigir
+          navigate("/admin/dashboard", { replace: true });
+          return;
+        }
+        // --- FIN DE LA CORRECCIÓN CLAVE ---
+
         setUser(data);
-        // Guardamos los datos del usuario en localStorage para poder usarlos en otras partes de la app
         localStorage.setItem("user", JSON.stringify(data));
       } catch (err: any) {
         setError(err.message);
@@ -92,29 +91,20 @@ function Dashboard() {
         setIsLoading(false);
       }
     };
-
     fetchUserData();
-  }, []); // El array vacío asegura que este efecto se ejecute solo una vez
-
-  // --- RENDERIZADO CONDICIONAL ---
+  }, [navigate]);
 
   if (isLoading) {
     return (
-      <Box
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-        height="80vh"
-      >
-        <Spinner size="xl" color="teal.300" />
+      <Box display="flex" justifyContent="center" py={10}>
+        <Spinner size="xl" />
       </Box>
     );
   }
-
   if (error) {
     return (
       <Box p={8}>
-        <Alert status="error" variant="solid" bg="red.800" borderRadius="md">
+        <Alert status="error">
           <AlertIcon />
           {error}
         </Alert>
@@ -122,9 +112,7 @@ function Dashboard() {
     );
   }
 
-  const isClient = user?.role.name === "cliente";
-  const isAdmin = user?.role.name === "admin";
-
+  // Este JSX solo será visible para los clientes.
   return (
     <Box p={8} bg="gray.800" color="white" minH="calc(100vh - 4rem)">
       <VStack spacing={4} align="stretch" mb={10}>
@@ -135,36 +123,16 @@ function Dashboard() {
           Gestiona tus servicios y pagos de forma rápida y sencilla.
         </Text>
       </VStack>
-
       <Heading as="h2" size="lg" mb={6}>
         Accesos Rápidos
       </Heading>
       <SimpleGrid columns={{ sm: 1, md: 2, lg: 3 }} spacing={6}>
-        {/* --- TARJETAS PARA CLIENTES --- */}
-        {isClient && (
-          <>
-            <DashboardCard to="/payments" title="Mis Pagos">
-              Consulta tu historial de pagos y facturas pendientes.
-            </DashboardCard>
-            <DashboardCard to="/services" title="Mis Servicios">
-              Revisa los detalles de tu plan de internet actual.
-            </DashboardCard>
-          </>
-        )}
-
-        {/* --- TARJETAS PARA ADMINISTRADORES --- */}
-        {isAdmin && (
-          <>
-            <DashboardCard to="/admin/clients" title="Gestionar Clientes">
-              Busca, edita o crea nuevos perfiles de clientes.
-            </DashboardCard>
-            <DashboardCard to="/admin/invoices" title="Gestionar Facturas">
-              Genera y administra las facturas de todos los clientes.
-            </DashboardCard>
-          </>
-        )}
-
-        {/* --- TARJETA COMÚN PARA TODOS --- */}
+        <DashboardCard to="/payments" title="Mis Pagos">
+          Consulta tu historial de pagos y facturas pendientes.
+        </DashboardCard>
+        <DashboardCard to="/services" title="Mis Servicios">
+          Revisa los detalles de tu plan de internet actual.
+        </DashboardCard>
         <DashboardCard to="/profile" title="Mi Perfil">
           Actualiza tu información personal y de contacto.
         </DashboardCard>

@@ -1,0 +1,114 @@
+@page {
+  size: A4;
+  margin: 1cm;
+}
+
+body {
+  font-family: "Segoe UI", "Roboto", "Helvetica Neue", "Arial", sans-serif;
+  font-size: 9pt;
+  color: #333;
+  background-color: #fff;
+  margin: 0;
+  padding: 0;
+}
+
+.receipt-container {
+  width: 100%;
+  min-height: 14cm;
+  background-color: #fff;
+  padding: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 2px solid #007bff;
+  padding-bottom: 10px;
+  margin-bottom: 20px;
+}
+
+.company-logo .logo {
+  max-width: 120px;
+  height: auto;
+}
+
+.company-details {
+  text-align: right;
+}
+
+.company-name {
+  font-size: 1.6em;
+  font-weight: 600;
+  color: #007bff;
+  margin: 0;
+}
+
+.receipt-title {
+  display: none;
+}
+
+.details-section {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.client-info h2 {
+  font-size: 0.9em;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 5px;
+}
+
+.receipt-info {
+  text-align: right;
+  font-size: 0.9em;
+}
+
+.items-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0;
+}
+
+.items-table th {
+  background-color: #f2f8ff;
+  color: #007bff;
+  font-weight: 600;
+  text-align: left;
+  padding: 12px;
+  border-bottom: 2px solid #dee2e6;
+}
+
+.items-table td {
+  padding: 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.items-table tr:last-child td {
+  border-bottom: none;
+}
+
+.items-table .text-right {
+  text-align: right;
+}
+
+.items-table tfoot .total-row td {
+  border-top: 2px solid #333;
+  font-weight: bold;
+  font-size: 1.1em;
+  color: #000;
+}
+
+/* Estilo final del footer: ahora sí, centrado */
+.footer {
+  text-align: center;
+  padding-top: 20px;
+  font-size: 9pt;
+  color: #333;
+}

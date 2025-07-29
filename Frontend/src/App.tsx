@@ -61,6 +61,10 @@ function App() {
                   path="invoices"
                   element={<Placeholder title="Gestionar Facturas" />}
                 />
+                <Route
+                  path="settings"
+                  element={<Placeholder title="Configuración" />}
+                />
               </Route>
 
               <Route path="/" element={<Navigate to="/dashboard" />} />

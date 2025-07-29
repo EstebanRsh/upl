@@ -8,12 +8,10 @@ import {
 } from "@chakra-ui/react";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 
-// --- INICIO DE LA CORRECCIÓN CLAVE ---
 type UserInfo = {
   first_name: string;
-  role: string; // El rol es un string
+  role: string;
 };
-// --- FIN DE LA CORRECCIÓN CLAVE ---
 
 export default function Navbar() {
   const navigate = useNavigate();
@@ -21,11 +19,8 @@ export default function Navbar() {
   const userString = localStorage.getItem("user");
   const user: UserInfo | null = userString ? JSON.parse(userString) : null;
 
-  // --- INICIO DE LA CORRECCIÓN CLAVE ---
-  // Ahora un admin puede ser 'Admin' o 'Gerente'
   const isAdmin = user?.role === "Admin" || user?.role === "Gerente";
   const isClient = user?.role === "Cliente";
-  // --- FIN DE LA CORRECCIÓN CLAVE ---
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -47,7 +42,9 @@ export default function Navbar() {
             UPL Pagos
           </RouterLink>
         </Heading>
+
         <Flex alignItems="center">
+          {/* --- ENLACES PARA ADMINISTRADORES --- */}
           {isAdmin && (
             <>
               <ChakraLink as={RouterLink} to="/admin/dashboard" mr={4}>
@@ -56,11 +53,18 @@ export default function Navbar() {
               <ChakraLink as={RouterLink} to="/admin/clients" mr={4}>
                 Clientes
               </ChakraLink>
-              <ChakraLink as={RouterLink} to="/admin/invoices" mr={6}>
+              <ChakraLink as={RouterLink} to="/admin/invoices" mr={4}>
                 Facturación
               </ChakraLink>
+              {/* --- INICIO DE LA CORRECCIÓN CLAVE --- */}
+              <ChakraLink as={RouterLink} to="/admin/settings" mr={6}>
+                Configuración
+              </ChakraLink>
+              {/* --- FIN DE LA CORRECCIÓN CLAVE --- */}
             </>
           )}
+
+          {/* --- ENLACES PARA CLIENTES --- */}
           {isClient && (
             <>
               <ChakraLink as={RouterLink} to="/dashboard" mr={4}>
@@ -71,6 +75,8 @@ export default function Navbar() {
               </ChakraLink>
             </>
           )}
+
+          {/* --- ENLACES COMUNES --- */}
           {user && (
             <ChakraLink as={RouterLink} to="/profile" mr={6} fontWeight="bold">
               {user.first_name}

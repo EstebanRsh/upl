@@ -9,11 +9,19 @@ import {
   AlertIcon,
   HStack,
   Button,
+  Text,
+  Badge,
+  Table,
+  Thead,
+  Tbody,
+  Tr,
+  Th,
+  Td,
+  TableContainer,
 } from "@chakra-ui/react";
-import { ClientSearch } from "../../components/admin/ClientSearch";
-import { ClientList } from "../../components/admin/ClientList";
-import { Pagination } from "../../components/payments/Pagination"; // Reutilizamos la paginación
 import { useNavigate } from "react-router-dom";
+import { ClientSearch } from "../../components/admin/ClientSearch";
+import { Pagination } from "../../components/payments/Pagination"; // Reutilizamos la paginación
 
 // El tipo de dato para un usuario, basado en tu modelo UserOut
 export type User = {
@@ -72,6 +80,86 @@ function ClientManagement() {
     setSearchTerm(term);
   };
 
+  const getRoleBadge = (role: string) => {
+    const roles = {
+      Admin: "red",
+      Gerente: "pink",
+      Técnico: "blue",
+      Cobrador: "green",
+      Cliente: "purple",
+    };
+    return (
+      <Badge colorScheme={roles[role as keyof typeof roles] || "gray"}>
+        {role}
+      </Badge>
+    );
+  };
+
+  const renderContent = () => {
+    if (isLoading) {
+      return (
+        <Box display="flex" justifyContent="center" py={10}>
+          <Spinner size="xl" />
+        </Box>
+      );
+    }
+    if (error) {
+      return (
+        <Alert status="error" mt={4}>
+          <AlertIcon />
+          {error}
+        </Alert>
+      );
+    }
+    if (users.length === 0) {
+      return (
+        <Box bg="gray.700" p={6} borderRadius="md" textAlign="center">
+          <Text color="gray.400">
+            No se encontraron clientes con los criterios de búsqueda.
+          </Text>
+        </Box>
+      );
+    }
+    return (
+      <TableContainer bg="gray.700" borderRadius="md">
+        <Table variant="simple">
+          <Thead>
+            <Tr>
+              <Th color="white">Nombre Completo</Th>
+              <Th color="white">Usuario</Th>
+              <Th color="white">DNI</Th>
+              <Th color="white">Email</Th>
+              <Th color="white">Rol</Th>
+              <Th color="white">Acciones</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {users.map((user) => (
+              <Tr key={user.dni}>
+                <Td>
+                  {user.firstname} {user.lastname}
+                </Td>
+                <Td>@{user.username}</Td>
+                <Td>{user.dni}</Td>
+                <Td>{user.email}</Td>
+                <Td>{getRoleBadge(user.role)}</Td>
+                <Td>
+                  <Button
+                    size="sm"
+                    colorScheme="blue"
+                    onClick={() => navigate(`/admin/clients/${user.dni}/edit`)}
+                  >
+                    Editar
+                  </Button>
+                </Td>
+              </Tr>
+            ))}
+          </Tbody>
+        </Table>
+      </TableContainer>
+    );
+  };
+
   return (
     <Box
       p={{ base: 4, md: 8 }}
@@ -94,18 +182,7 @@ function ClientManagement() {
 
         <ClientSearch onSearch={handleSearch} />
 
-        {isLoading ? (
-          <Box display="flex" justifyContent="center" py={10}>
-            <Spinner size="xl" />
-          </Box>
-        ) : error ? (
-          <Alert status="error" mt={4}>
-            <AlertIcon />
-            {error}
-          </Alert>
-        ) : (
-          <ClientList users={users} />
-        )}
+        {renderContent()}
 
         <Pagination
           currentPage={currentPage}

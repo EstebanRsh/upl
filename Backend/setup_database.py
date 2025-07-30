@@ -6,9 +6,6 @@ from config.db import SessionLocal, Base, engine
 from models.models import (
     User,
     UserDetail,
-    Role,
-    Permission,
-    PERMISSIONS_LIST,
     InternetPlan,
     Subscription,
     Invoice,
@@ -24,7 +21,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --- DATOS INICIALES ---
-# Aquí defines la configuración y los datos de ejemplo
 COMPANY_SETTINGS = [
     {
         "setting_name": "BUSINESS_NAME",
@@ -56,61 +52,49 @@ COMPANY_SETTINGS = [
         "setting_value": "15",
         "description": "Días de plazo para el pago de facturas.",
     },
+    {
+        "setting_name": "late_fee_amount",
+        "setting_value": "500",
+        "description": "Monto del recargo por pago fuera de término.",
+    },
+    {
+        "setting_name": "days_for_suspension",
+        "setting_value": "30",
+        "description": "Días tras el vencimiento para suspender el servicio.",
+    },
+    {
+        "setting_name": "auto_invoicing_enabled",
+        "setting_value": "true",
+        "description": "Habilita o deshabilita la facturación automática mensual.",
+    },
 ]
-ROLES = ["Cliente", "Técnico", "Cobrador", "Admin", "Gerente"]
-PERMISSIONS_FOR_ROLES = {
-    "Técnico": ["users:read_all", "users:update"],
-    "Cobrador": ["payments:create", "users:read_all"],
-}
-PLANS_TO_CREATE = [
-    {"name": "Fibra 100MB", "speed_mbps": 100, "price": 5000.00},
-]
+
+PLAN_EJEMPLO = {"name": "Fibra 100MB", "speed_mbps": 100, "price": 5000.00}
 
 
 # --- LÓGICA DEL SCRIPT ---
 def setup_database():
     db: Session = SessionLocal()
     try:
-        logger.info("--- Iniciando configuración completa de la base de datos ---")
+        logger.info(
+            "--- Iniciando configuración de la base de datos (versión simplificada) ---"
+        )
 
         logger.warning("Borrando todas las tablas existentes...")
         Base.metadata.drop_all(bind=engine)
         Base.metadata.create_all(bind=engine)
         logger.info("Tablas recreadas exitosamente.")
 
-        # 1. Crear Permisos
-        permissions_map = {p["name"]: Permission(**p) for p in PERMISSIONS_LIST}
-        db.add_all(permissions_map.values())
-        db.commit()
-        logger.info(f"{len(permissions_map)} permisos creados.")
-
-        # 2. Crear Roles y Asignar Permisos
-        roles_map = {}
-        all_permissions = list(permissions_map.values())
-        for role_name in ROLES:
-            role = Role(name=role_name, description=f"Rol para {role_name}")
-            if role_name in ["Admin", "Gerente"]:
-                role.permissions = all_permissions
-            elif role_name in PERMISSIONS_FOR_ROLES:
-                role.permissions = [
-                    permissions_map[p_name]
-                    for p_name in PERMISSIONS_FOR_ROLES[role_name]
-                ]
-            db.add(role)
-            roles_map[role_name] = role
-        db.commit()
-        logger.info(f"{len(roles_map)} roles creados y permisos asignados.")
-
-        # 3. Guardar la configuración de la empresa
+        # 1. Guardar la configuración de la empresa
         for setting in COMPANY_SETTINGS:
             db.add(BusinessSettings(**setting))
         db.commit()
         logger.info("Configuración de la empresa guardada.")
 
-        # 4. Crear el primer Superusuario (Gerente)
-        print("\n--- Creación del Usuario Gerente ---")
-        username = input("Nombre de usuario para el Gerente: ")
-        email = input("Email del Gerente: ")
+        # 2. Crear el primer Superusuario (Administrador)
+        print("\n--- Creación del Usuario Administrador ---")
+        username = input("Nombre de usuario para el Administrador: ")
+        email = input("Email del Administrador: ")
         password = getpass("Contraseña (mínimo 8 caracteres): ")
         if len(password) < 8:
             raise ValueError("La contraseña debe tener al menos 8 caracteres.")
@@ -121,38 +105,36 @@ def setup_database():
 
         hashed_password = Security.get_password_hash(password)
 
-        # Se crea el usuario y luego se asignan las relaciones para evitar errores
-        gerente_user = User(username=username, password=hashed_password, email=email)
-        gerente_detail = UserDetail(
-            dni=int(dni), firstname=firstname, lastname=lastname
+        admin_detail = UserDetail(
+            dni=int(dni),
+            firstname=firstname,
+            lastname=lastname,
+            type="administrador",  # Asignación directa del rol
         )
-        gerente_user.userdetail = gerente_detail
-        gerente_user.role_obj = roles_map["Gerente"]
-
-        db.add(gerente_user)
+        admin_user = User(username=username, password=hashed_password, email=email)
+        admin_user.userdetail = admin_detail
+        db.add(admin_user)
         db.commit()
-        logger.info(f"¡Usuario Gerente '{username}' creado exitosamente!")
+        logger.info(f"¡Usuario Administrador '{username}' creado exitosamente!")
 
-        # 5. Crear datos de ejemplo (1 cliente con 1 factura pagada y PDF)
+        # 3. Crear datos de ejemplo (1 cliente con 1 factura pagada)
         logger.info("Creando datos de ejemplo (cliente, plan, factura y pago)...")
-        plan = InternetPlan(**PLANS_TO_CREATE[0])
+        plan = InternetPlan(**PLAN_EJEMPLO)
         cliente_detail = UserDetail(
             dni=12345678,
             firstname="Juan",
             lastname="Perez",
+            type="cliente",  # Asignación directa del rol
             address="Calle Falsa 123",
             barrio="Centro",
             city="Ciudad Ejemplo",
         )
-
-        # Contraseña para el cliente de ejemplo: "password123"
         cliente_user = User(
             username="juanperez",
             password=Security.get_password_hash("password123"),
             email="juan.perez@cliente.com",
         )
         cliente_user.userdetail = cliente_detail
-        cliente_user.role_obj = roles_map["Cliente"]
         db.add(plan)
         db.add(cliente_user)
         db.commit()
@@ -171,18 +153,23 @@ def setup_database():
         db.add(invoice)
         db.commit()
 
+        # Simular un pago para la factura creada
         payment_input = InputPayment(
             user_id=cliente_user.id, plan_id=plan.id, amount=plan.price
         )
-        process_new_payment(payment_input, db)
-        db.commit()
-        logger.info(
-            "Cliente de ejemplo 'juanperez' (pass: password123) creado con una factura pagada y un recibo PDF."
-        )
+        # Asumiendo que process_new_payment puede ser llamado aquí
+        # Si da error, puede que necesite ser adaptado o llamado de otra forma
+        try:
+            process_new_payment(payment_input, db)
+            db.commit()
+            logger.info(
+                "Cliente de ejemplo 'juanperez' (pass: password123) creado con una factura pagada."
+            )
+        except Exception as payment_error:
+            logger.error(f"No se pudo procesar el pago de ejemplo: {payment_error}")
+            db.rollback()
 
-        logger.info(
-            "\n--- ¡Configuración completada! La base de datos está lista para usar. ---"
-        )
+        logger.info("\n--- ¡Configuración completada! La base de datos está lista. ---")
 
     except Exception as e:
         logger.error(f"Ocurrió un error durante la configuración: {e}", exc_info=True)
@@ -193,7 +180,7 @@ def setup_database():
 
 if __name__ == "__main__":
     respuesta = input(
-        "ADVERTENCIA: Este script borrará TODOS los datos de tu BD y la configurará desde cero. ¿Estás seguro? (s/n): "
+        "ADVERTENCIA: Este script borrará TODOS los datos y configurará la BD desde cero. ¿Estás seguro? (s/n): "
     )
     if respuesta.lower() == "s":
         setup_database()

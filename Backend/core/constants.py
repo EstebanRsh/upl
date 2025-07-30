@@ -1,16 +1,17 @@
 # core/constants.py
 
-# --- User Roles ---
-# Define los roles de usuario en el sistema.
+# --- User Roles Simplificados ---
+# Ahora solo definimos los dos roles que usará el sistema.
 USER_ROLE_ADMIN = "administrador"
 USER_ROLE_CLIENT = "cliente"
 
 # --- Subscription Status ---
-# Define los estados posibles para la suscripción de un cliente.
+# Estos estados siguen siendo válidos.
 SUBSCRIPTION_STATUS_ACTIVE = "active"
 SUBSCRIPTION_STATUS_SUSPENDED = "suspended"
 
 # --- Invoice Status ---
-# Define los estados para una factura.
+# Estos estados también siguen siendo válidos.
 INVOICE_STATUS_PENDING = "pending"
 INVOICE_STATUS_PAID = "paid"
+INVOICE_STATUS_IN_REVIEW = "in_review"  # Es buena idea añadir este si no lo tenías

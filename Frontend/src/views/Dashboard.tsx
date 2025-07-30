@@ -1,5 +1,5 @@
 // src/views/Dashboard.tsx
-import { useState, useEffect } from "react";
+import { useEffect, useContext } from "react";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 import {
   Box,
@@ -12,16 +12,8 @@ import {
   CardBody,
   Link,
   Spinner,
-  Alert,
-  AlertIcon,
 } from "@chakra-ui/react";
-
-// --- INICIO DE LA CORRECCIÓN CLAVE ---
-type UserInfo = {
-  first_name: string;
-  role: string; // El rol ahora es un string simple
-};
-// --- FIN DE LA CORRECCIÓN CLAVE ---
+import { AuthContext } from "../context/AuthContext";
 
 const DashboardCard = ({
   to,
@@ -52,67 +44,33 @@ const DashboardCard = ({
 );
 
 function Dashboard() {
-  const [user, setUser] = useState<UserInfo | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { user, loading } = useContext(AuthContext);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchUserData = async () => {
-      const token = localStorage.getItem("token");
-      const USER_ME_URL = "http://localhost:8000/api/users/me";
-      try {
-        if (!token) throw new Error("No se encontró token de sesión.");
-        const response = await fetch(USER_ME_URL, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(
-            errorData.detail || "No se pudieron cargar los datos."
-          );
-        }
-        const data: UserInfo = await response.json();
+    if (
+      !loading &&
+      user &&
+      (user.role === "Admin" || user.role === "Gerente")
+    ) {
+      navigate("/admin/dashboard", { replace: true });
+    }
+  }, [user, loading, navigate]);
 
-        // --- INICIO DE LA CORRECCIÓN CLAVE ---
-        // Comprobamos si el rol es Admin o Gerente
-        if (data.role === "Admin" || data.role === "Gerente") {
-          localStorage.setItem("user", JSON.stringify(data)); // Guardamos los datos antes de redirigir
-          navigate("/admin/dashboard", { replace: true });
-          return;
-        }
-        // --- FIN DE LA CORRECCIÓN CLAVE ---
-
-        setUser(data);
-        localStorage.setItem("user", JSON.stringify(data));
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchUserData();
-  }, [navigate]);
-
-  if (isLoading) {
+  if (loading || (user && (user.role === "Admin" || user.role === "Gerente"))) {
     return (
-      <Box display="flex" justifyContent="center" py={10}>
+      <Box
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+        height="80vh"
+      >
         <Spinner size="xl" />
       </Box>
     );
   }
-  if (error) {
-    return (
-      <Box p={8}>
-        <Alert status="error">
-          <AlertIcon />
-          {error}
-        </Alert>
-      </Box>
-    );
-  }
 
-  // Este JSX solo será visible para los clientes.
+  // Esto solo se renderizará para el rol "Cliente"
   return (
     <Box p={8} bg="gray.800" color="white" minH="calc(100vh - 4rem)">
       <VStack spacing={4} align="stretch" mb={10}>

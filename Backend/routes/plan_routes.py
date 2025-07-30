@@ -1,11 +1,10 @@
 # routes/plan_routes.py
 # -----------------------------------------------------------------------------
-# RUTAS DE GESTIÓN DE PLANES DE INTERNET (CRUD)
+# RUTAS DE GESTIÓN DE PLANES DE INTERNET (CRUD - VERSIÓN SIMPLIFICADA)
 # -----------------------------------------------------------------------------
-# routes/plan_routes.py
 import logging
 import math
-from fastapi import APIRouter, Depends, Query, HTTPException, status
+from fastapi import APIRouter, Depends, Query, HTTPException, status, Header
 from sqlalchemy.orm import Session
 from models.models import (
     InternetPlan,
@@ -16,16 +15,31 @@ from models.models import (
     Subscription,
 )
 from config.db import get_db
-from auth.security import has_permission
+from auth.security import Security
 
 logger = logging.getLogger(__name__)
 plan_router = APIRouter()
 
 
+# --- Dependencia de Seguridad Simplificada (Recomendación: mover a un archivo auth/dependencies.py) ---
+def verify_admin_permission(authorization: str = Header(...)):
+    """
+    Verifica que el token en la cabecera pertenezca a un administrador.
+    """
+    token_data = Security.verify_token({"authorization": authorization})
+    if not token_data.get("success") or token_data.get("role") != "administrador":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos de administrador para realizar esta acción.",
+        )
+    return token_data
+
+
 @plan_router.post(
     "/admin/plans/add",
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(has_permission("plans:create"))],
+    dependencies=[Depends(verify_admin_permission)],
+    tags=["Admin"],
 )
 def add_plan(plan_data: InputPlan, db: Session = Depends(get_db)):
     logger.info(f"Creando nuevo plan: '{plan_data.name}'.")
@@ -41,13 +55,15 @@ def add_plan(plan_data: InputPlan, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
 
-@plan_router.get("/plans/all", response_model=PaginatedResponse[PlanOut])
+@plan_router.get(
+    "/plans/all", response_model=PaginatedResponse[PlanOut], tags=["Planes de Internet"]
+)
 def get_all_plans(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    # Ruta pública, sin cambios
+    # Esta ruta es pública y no necesita cambios en su lógica.
     logger.info("Solicitud pública para obtener todos los planes.")
     try:
         total_items = db.query(InternetPlan).count()
@@ -65,7 +81,8 @@ def get_all_plans(
 
 @plan_router.put(
     "/admin/plans/update/{plan_id}",
-    dependencies=[Depends(has_permission("plans:update"))],
+    dependencies=[Depends(verify_admin_permission)],
+    tags=["Admin"],
 )
 def update_plan(plan_id: int, plan_data: UpdatePlan, db: Session = Depends(get_db)):
     logger.info(f"Actualizando plan ID: {plan_id}.")
@@ -81,8 +98,6 @@ def update_plan(plan_id: int, plan_data: UpdatePlan, db: Session = Depends(get_d
         db.commit()
         db.refresh(plan)
         return {"message": "Plan actualizado.", "plan": PlanOut.model_validate(plan)}
-    except HTTPException:
-        raise
     except Exception as e:
         db.rollback()
         logger.error(f"Error en update_plan (ID: {plan_id}): {e}", exc_info=True)
@@ -91,7 +106,8 @@ def update_plan(plan_id: int, plan_data: UpdatePlan, db: Session = Depends(get_d
 
 @plan_router.delete(
     "/admin/plans/delete/{plan_id}",
-    dependencies=[Depends(has_permission("plans:delete"))],
+    dependencies=[Depends(verify_admin_permission)],
+    tags=["Admin"],
 )
 def delete_plan(plan_id: int, db: Session = Depends(get_db)):
     logger.info(f"Intentando eliminar plan ID: {plan_id}.")
@@ -109,8 +125,6 @@ def delete_plan(plan_id: int, db: Session = Depends(get_db)):
         db.delete(plan)
         db.commit()
         return {"message": f"Plan con ID {plan_id} eliminado."}
-    except HTTPException:
-        raise
     except Exception as e:
         db.rollback()
         logger.error(f"Error en delete_plan (ID: {plan_id}): {e}", exc_info=True)

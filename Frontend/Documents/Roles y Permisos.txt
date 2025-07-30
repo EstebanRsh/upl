@@ -1,0 +1,102 @@
+================================================================================
+GUÍA RÁPIDA DE GESTIÓN DE ROLES Y PERMISOS EN LA APLICACIÓN
+================================================================================
+
+Este documento explica cómo funciona el sistema de roles y permisos y cómo
+modificarlo. La lógica principal está centralizada en el backend para
+mantener la seguridad y la claridad, simplificando el desarrollo del frontend.
+
+--------------------------------------------------------------------------------
+1. ¿DÓNDE SE DEFINEN LOS PERMISOS?
+--------------------------------------------------------------------------------
+
+Todos los permisos (acciones específicas que se pueden realizar) se definen
+en una única lista en el backend.
+
+- Archivo: `Backend/models/models.py`
+- Variable: `PERMISSIONS_LIST`
+
+Para crear un nuevo permiso, simplemente agrégalo a esta lista. Por ejemplo:
+
+{"name": "facturas:eliminar", "description": "Permite eliminar una factura."}
+
+--------------------------------------------------------------------------------
+2. ¿CÓMO GESTIONAR ROLES Y ASIGNARLES PERMISOS? (¡El archivo más importante!)
+--------------------------------------------------------------------------------
+
+Aquí es donde se define cada rol (Administrador, Gerente, Técnico, etc.)
+y se le asignan los permisos que definiste en el paso anterior.
+
+- Archivo: `Backend/core/init_data.py`
+- Variable: `ROLES_WITH_PERMISSIONS`
+
+La estructura es un diccionario donde cada clave es el nombre del rol.
+
+Ejemplos de configuración:
+
+-   **Asignar todos los permisos**: Usa la palabra "all". Ideal para roles
+    como Administrador o Gerente.
+    ```python
+    "Admin": "all",
+    "Gerente": "all",
+    ```
+
+-   **Asignar permisos específicos**: Usa una lista con los nombres de los
+    permisos.
+    ```python
+    "Técnico": [
+        "users:read_all",
+        "users:update",
+    ],
+    "Cobrador": [
+        "payments:create",
+        "users:read_all",
+    ],
+    ```
+- **Rol sin permisos especiales**: Usa una lista vacía. Sus acciones se
+  validan de otra manera (por ejemplo, un cliente solo puede ver sus propios datos).
+    ```python
+    "Cliente": [],
+    ```
+
+**Para modificar lo que un rol puede hacer, solo necesitas editar este diccionario.**
+El sistema se actualizará automáticamente al reiniciar la aplicación.
+
+--------------------------------------------------------------------------------
+3. ¿CÓMO FUNCIONA EL SISTEMA POR DETRÁS? (Contexto técnico)
+--------------------------------------------------------------------------------
+
+a. **Inicio de la aplicación**: El script `setup_database.py` lee los roles
+   y permisos de `init_data.py` y los crea o actualiza en la base de datos.
+
+b. **Inicio de sesión (Login)**: Cuando un usuario inicia sesión, el backend
+   genera un Token JWT. Dentro de este token, se incluye el rol del usuario
+   y la **lista completa de sus permisos**. (`Backend/auth/security.py`)
+
+c. **Protección de rutas**: Las rutas del backend que requieren un permiso
+   especial están protegidas. Usan `Depends(has_permission("nombre_del_permiso"))`.
+   Si el token del usuario no contiene ese permiso, el acceso es denegado
+   automáticamente con un error 403.
+
+--------------------------------------------------------------------------------
+4. IMPACTO EN EL FRONTEND
+--------------------------------------------------------------------------------
+
+Gracias a que el backend se encarga de TODA la seguridad, el frontend tiene
+una tarea más simple:
+
+- **La seguridad está garantizada**: No tienes que preocuparte por si un
+  usuario intenta hacer algo que no debe. El backend lo bloqueará.
+
+- **Mostrar u ocultar elementos**: En el frontend, puedes leer el ROL del
+  usuario desde el token (almacenado en `localStorage`) para decidir si
+  muestras o no un botón, un enlace o una sección completa.
+
+  La lógica actual en `Navbar.tsx` y `Dashboard.tsx` que comprueba el rol es
+  correcta y suficiente para este propósito. Mantiene el código del frontend
+  limpio y legible.
+
+================================================================================
+En resumen: Para cambiar lo que un rol puede hacer, edita el diccionario
+`ROLES_WITH_PERMISSIONS` en `Backend/core/init_data.py`.
+================================================================================

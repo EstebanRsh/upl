@@ -1,10 +1,10 @@
 # Backend/routes/invoice_routes.py
 import logging
 import shutil
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Header
 from sqlalchemy.orm import Session
 from models.models import Invoice
-from auth.security import get_current_user
+from auth.security import Security
 from config.db import get_db
 import os
 
@@ -24,10 +24,16 @@ os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
 def upload_receipt(
     invoice_id: int,
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user),
+    authorization: str = Header(...),
     db: Session = Depends(get_db),
 ):
-    user_id = current_user.get("user_id")
+    token_data = Security.verify_token({"authorization": authorization})
+    if not token_data.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=token_data.get("message")
+        )
+
+    user_id = token_data.get("user_id")
     logger.info(
         f"Usuario ID {user_id} subiendo comprobante para factura ID {invoice_id}."
     )
@@ -50,8 +56,8 @@ def upload_receipt(
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # Actualizar la factura (ejemplo: cambiar estado y guardar ruta del archivo)
-        invoice.status = "in_review"  # Un nuevo estado para indicar que el pago está siendo verificado
+        # Actualizar la factura para indicar que el pago está pendiente de revisión
+        invoice.status = "in_review"
         invoice.receipt_pdf_url = (
             file_path  # Guardamos la ruta para referencia del admin
         )
@@ -61,7 +67,6 @@ def upload_receipt(
         return {
             "message": "Comprobante subido exitosamente. Será verificado a la brevedad."
         }
-
     except Exception as e:
         db.rollback()
         logger.error(f"Error al subir el comprobante para la factura {invoice_id}: {e}")

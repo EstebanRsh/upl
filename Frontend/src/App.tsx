@@ -40,11 +40,13 @@ function App() {
         }
       >
         <Routes>
+          {/* Ruta pública para el login */}
           <Route path="/login" element={<Login />} />
 
+          {/* Aquí comienzan las rutas protegidas que requieren iniciar sesión */}
           <Route element={<ProtectedRoutes />}>
             <Route element={<MainLayout />}>
-              {/* Rutas para Clientes */}
+              {/* --- Rutas para Clientes --- */}
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/payments" element={<PaymentHistory />} />
               <Route path="/profile" element={<Profile />} />
@@ -53,8 +55,10 @@ function App() {
                 element={<Placeholder title="Mis Servicios" />}
               />
 
-              {/* Sección de Rutas para Admin */}
+              {/* --- Sección de Rutas para Admin y Gerente --- */}
+              {/* 1. La ruta base es "/admin" y está protegida por AdminRoutes */}
               <Route path="/admin" element={<AdminRoutes />}>
+                {/* 2. Estas rutas se anidan DENTRO de /admin */}
                 <Route path="dashboard" element={<AdminDashboard />} />
                 <Route path="clients" element={<ClientManagement />} />
                 <Route
@@ -67,6 +71,7 @@ function App() {
                 />
               </Route>
 
+              {/* Redirección por defecto si se accede a la raíz "/" */}
               <Route path="/" element={<Navigate to="/dashboard" />} />
             </Route>
           </Route>

@@ -44,7 +44,8 @@ export default function Navbar() {
         </Heading>
 
         <Flex alignItems="center">
-          {/* --- ENLACES PARA ADMINISTRADORES --- */}
+          {/* --- ENLACES PARA ADMINISTRADORES Y GERENTES --- */}
+          {/* Estos enlaces apuntan a las rutas anidadas en App.tsx */}
           {isAdmin && (
             <>
               <ChakraLink as={RouterLink} to="/admin/dashboard" mr={4}>
@@ -56,11 +57,9 @@ export default function Navbar() {
               <ChakraLink as={RouterLink} to="/admin/invoices" mr={4}>
                 Facturación
               </ChakraLink>
-              {/* --- INICIO DE LA CORRECCIÓN CLAVE --- */}
               <ChakraLink as={RouterLink} to="/admin/settings" mr={6}>
                 Configuración
               </ChakraLink>
-              {/* --- FIN DE LA CORRECCIÓN CLAVE --- */}
             </>
           )}
 

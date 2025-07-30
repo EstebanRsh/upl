@@ -1,26 +1,19 @@
 # models/models.py
 # -----------------------------------------------------------------------------
-# DEFINICIÓN DE MODELOS DE DATOS
-# -----------------------------------------------------------------------------
-#
+# DEFINICIÓN DE MODELOS DE DATOS (VERSIÓN SIMPLIFICADA)
 # -----------------------------------------------------------------------------
 
-# Importaciones necesarias de SQLAlchemy, Pydantic y tipos de Python.
-from pydantic import BaseModel, ConfigDict
-from config.db import engine, Base
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from config.db import Base
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float
-from sqlalchemy.orm import sessionmaker, relationship
-from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy.orm import relationship
 import datetime
-from sqlalchemy import Table, event
 from typing import List, TypeVar, Generic
 from core.constants import (
-    USER_ROLE_CLIENT,
     SUBSCRIPTION_STATUS_ACTIVE,
     INVOICE_STATUS_PENDING,
 )
 
-# ... (El resto de las importaciones y la variable T no cambian) ...
 T = TypeVar("T")
 
 # --- Modelos de la Base de Datos (SQLAlchemy) ---
@@ -37,9 +30,6 @@ class User(Base):
     id_userdetail = Column(Integer, ForeignKey("userdetails.id"))
     refresh_token = Column("refresh_token", String, nullable=True)
 
-    role_id = Column(Integer, ForeignKey("roles.id"))  # El ID del rol del usuario
-    role_obj = relationship("Role", back_populates="users")  # El objeto Role completo
-    # ... (las relaciones no cambian) ...
     userdetail = relationship(
         "UserDetail",
         uselist=False,
@@ -57,23 +47,24 @@ class User(Base):
         "Invoice", back_populates="user", cascade="all, delete-orphan"
     )
 
-    # --- MODIFICADO ---
     def __init__(self, username, password, email=None):
-        """Constructor para crear una instancia de User."""
         self.username = username
         self.password = password
         self.email = email
 
 
-# ... (La clase UserDetail no cambia) ...
 class UserDetail(Base):
-    """Modelo de la tabla 'userdetails'. Almacena datos personales."""
+    """Modelo de la tabla 'userdetails'. Almacena datos personales y el rol."""
 
     __tablename__ = "userdetails"
     id = Column("id", Integer, primary_key=True)
     dni = Column("dni", Integer, unique=True, nullable=False)
     firstname = Column("firstname", String, nullable=False)
     lastname = Column("lastname", String, nullable=False)
+
+    # --- CAMBIO CLAVE: Campo de rol simplificado, como en appescuela ---
+    type = Column("type", String(50), default="cliente", nullable=False)
+
     address = Column("address", String, nullable=True)
     barrio = Column("barrio", String, nullable=True)
     city = Column("city", String, nullable=True)
@@ -86,6 +77,7 @@ class UserDetail(Base):
         dni,
         firstname,
         lastname,
+        type="cliente",  # Agregamos 'type' al constructor
         address=None,
         phone=None,
         city=None,
@@ -95,6 +87,7 @@ class UserDetail(Base):
         self.dni = dni
         self.firstname = firstname
         self.lastname = lastname
+        self.type = type
         self.address = address
         self.phone = phone
         self.city = city
@@ -102,10 +95,13 @@ class UserDetail(Base):
         self.phone2 = phone2
 
 
-# ... (La clase InternetPlan no cambia) ...
-class InternetPlan(Base):
-    """Modelo de la tabla 'internet_plans'. Define los planes ofrecidos."""
+# --- MODELOS ELIMINADOS ---
+# Ya no se necesitan las clases Role, Permission ni la tabla role_permissions.
 
+# --- OTROS MODELOS (Permanecen igual) ---
+
+
+class InternetPlan(Base):
     __tablename__ = "internet_plans"
     id = Column("id", Integer, primary_key=True)
     name = Column(String(100), nullable=False)
@@ -119,10 +115,7 @@ class InternetPlan(Base):
         self.price = price
 
 
-# ... (La clase Payment no cambia) ...
 class Payment(Base):
-    """Modelo de la tabla 'payments'. Registra cada pago."""
-
     __tablename__ = "payments"
     id = Column("id", Integer, primary_key=True)
     user_id = Column(ForeignKey("users.id"))
@@ -139,28 +132,21 @@ class Payment(Base):
 
 
 class Subscription(Base):
-    """Modelo de la tabla 'subscriptions'. Tabla pivote que une usuarios y planes."""
-
     __tablename__ = "subscriptions"
     id = Column("id", Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     plan_id = Column(Integer, ForeignKey("internet_plans.id"))
     subscription_date = Column(DateTime, default=datetime.datetime.now)
-    # --- MODIFICADO ---
     status = Column(String, default=SUBSCRIPTION_STATUS_ACTIVE)
     user = relationship("User", back_populates="subscriptions")
     plan = relationship("InternetPlan", back_populates="subscriptions")
 
     def __init__(self, user_id, plan_id):
-        """Constructor para crear una instancia de Subscription."""
         self.user_id = user_id
         self.plan_id = plan_id
 
 
-# ... (La clase BusinessSettings no cambia) ...
 class BusinessSettings(Base):
-    """Modelo de la tabla 'business_settings'. Almacena reglas de negocio configurables."""
-
     __tablename__ = "business_settings"
     id = Column(Integer, primary_key=True)
     setting_name = Column(String, unique=True, nullable=False, index=True)
@@ -173,46 +159,7 @@ class BusinessSettings(Base):
         self.description = description
 
 
-role_permissions = Table(
-    "role_permissions",
-    Base.metadata,
-    Column("role_id", Integer, ForeignKey("roles.id"), primary_key=True),
-    Column("permission_id", Integer, ForeignKey("permissions.id"), primary_key=True),
-)
-
-
-class Role(Base):
-    """Modelo para los roles de usuario (ej. 'Administrador', 'Facturación')."""
-
-    __tablename__ = "roles"
-    id = Column(Integer, primary_key=True)
-    name = Column(String(50), unique=True, nullable=False)
-    description = Column(String(255), nullable=True)
-
-    # Relación muchos-a-muchos con Permisos
-    permissions = relationship(
-        "Permission", secondary=role_permissions, back_populates="roles"
-    )
-    users = relationship("User", back_populates="role_obj")
-
-
-class Permission(Base):
-    """Modelo para los permisos específicos (ej. 'users:create', 'payments:delete')."""
-
-    __tablename__ = "permissions"
-    id = Column(Integer, primary_key=True)
-    name = Column(String(100), unique=True, nullable=False)  # ej. 'users:read'
-    description = Column(String(255), nullable=True)
-
-    # Relación muchos-a-muchos con Roles
-    roles = relationship(
-        "Role", secondary=role_permissions, back_populates="permissions"
-    )
-
-
 class Invoice(Base):
-    """Modelo de la tabla 'invoices'. Representa una factura mensual."""
-
     __tablename__ = "invoices"
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -222,21 +169,21 @@ class Invoice(Base):
     base_amount = Column(Float, nullable=False)
     late_fee = Column(Float, default=0.0)
     total_amount = Column(Float, nullable=False)
-    # --- MODIFICADO ---
     status = Column(String, default=INVOICE_STATUS_PENDING)
     receipt_pdf_url = Column(String, nullable=True)
-
     user = relationship("User", back_populates="invoices")
     subscription = relationship("Subscription")
     payments = relationship("Payment", back_populates="invoice")
 
     def __init__(self, user_id, subscription_id, due_date, base_amount, total_amount):
-        """Constructor para crear una instancia de Invoice."""
         self.user_id = user_id
         self.subscription_id = subscription_id
         self.due_date = due_date
         self.base_amount = base_amount
         self.total_amount = total_amount
+
+
+# --- Modelos Pydantic (para validación en las rutas) ---
 
 
 class InputUser(BaseModel):
@@ -251,88 +198,12 @@ class InputUser(BaseModel):
     city: str | None = None
     barrio: str | None = None
     phone2: str | None = None
+    type: str = "cliente"
 
 
 class InputLogin(BaseModel):
     username: str
     password: str
-
-
-class InputPlan(BaseModel):
-    name: str = Field(
-        ..., description="El nombre comercial del plan. Ej: 'Fibra Óptica 100 Mega'"
-    )
-    speed_mbps: int = Field(
-        ..., description="La velocidad de descarga del plan en Megabits por segundo."
-    )
-    price: float = Field(
-        ..., gt=0, description="El precio mensual del plan. Debe ser mayor que cero."
-    )
-
-
-class InputPayment(BaseModel):
-    plan_id: int
-    user_id: int
-    amount: float
-
-
-class InputSubscription(BaseModel):
-    user_id: int
-    plan_id: int
-
-
-# --- Modelos de Actualización (Pydantic) ---
-# ... (Las clases UpdatePlan, UpdateUserDetail, UpdateSubscriptionStatus, UpdateUserRole no cambian) ...
-class UpdatePlan(BaseModel):
-    name: str | None = None
-    speed_mbps: int | None = None
-    price: float | None = Field(
-        default=None,
-        gt=0,
-        description="El nuevo precio mensual del plan. Debe ser mayor que cero.",
-    )
-
-
-class UpdateUserDetail(BaseModel):
-    firstname: str | None = None
-    lastname: str | None = None
-    address: str | None = None
-    phone: str | None = None
-
-
-class UpdateSubscriptionStatus(BaseModel):
-    status: str
-
-
-class UpdateUserRole(BaseModel):
-    role: str
-
-
-class UpdateMyDetails(BaseModel):
-    """Schema para que un usuario actualice sus propios detalles (no el DNI)."""
-
-    firstname: str | None = None
-    lastname: str | None = None
-    address: str | None = None
-    barrio: str | None = None
-    city: str | None = None
-    phone: str | None = None
-    phone2: str | None = None
-
-
-class UpdateMyPassword(BaseModel):
-    """Schema para que un usuario cambie su contraseña."""
-
-    current_password: str
-    new_password: str = Field(..., min_length=8)
-
-
-# --- Modelos de Respuesta (Pydantic) ---
-class PaginatedResponse(BaseModel, Generic[T]):
-    total_items: int
-    total_pages: int
-    current_page: int
-    items: List[T]
 
 
 class UserOut(BaseModel):
@@ -346,31 +217,61 @@ class UserOut(BaseModel):
     city: str | None = None
     phone: str | None = None
     phone2: str | None = None
-    role: str
+    role: str  # Simplificado de 'role_obj' a 'role'
     model_config = ConfigDict(from_attributes=True)
 
 
-class PlanOut(BaseModel):
-    id: int
-    name: str
-    speed_mbps: int
-    price: float
+class UpdateMyDetails(BaseModel):
+    firstname: str | None = None
+    lastname: str | None = None
+    address: str | None = None
+    barrio: str | None = None
+    city: str | None = None
+    phone: str | None = None
+    phone2: str | None = None
 
 
-class PaymentOut(BaseModel):
-    id: int
-    plan_id: int
-    user_id: int
-    amount: float
-    payment_date: datetime.datetime
+class UpdateMyPassword(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=8)
 
 
-class SubscriptionOut(BaseModel):
-    id: int
-    status: str
-    subscription_date: datetime.datetime
-    user: UserOut
-    plan: PlanOut
+class PaginatedResponse(BaseModel, Generic[T]):
+    total_items: int
+    total_pages: int
+    current_page: int
+    items: List[T]
+
+
+class UpdateUserDetail(BaseModel):
+    firstname: str | None = None
+    lastname: str | None = None
+    address: str | None = None
+    phone: str | None = None
+    city: str | None = None
+    barrio: str | None = None
+    phone2: str | None = None
+
+
+# ... (Otros modelos Pydantic que no dependen de Role/Permission pueden permanecer)
+class ClientStatusSummary(BaseModel):
+    active_clients: int
+    suspended_clients: int
+    total_clients: int
+
+
+class InvoiceStatusSummary(BaseModel):
+    pending: int
+    paid: int
+    overdue: int
+    total: int
+
+
+class DashboardStats(BaseModel):
+    client_summary: ClientStatusSummary
+    invoice_summary: InvoiceStatusSummary
+    monthly_revenue: float
+    new_subscriptions_this_month: int
 
 
 class Setting(BaseModel):
@@ -379,119 +280,5 @@ class Setting(BaseModel):
     description: str | None = None
 
 
-class InvoiceOut(BaseModel):
-    """Schema de respuesta para una factura, sin datos del usuario."""
-
-    id: int
-    issue_date: datetime.datetime
-    due_date: datetime.datetime
-    base_amount: float
-    late_fee: float
-    total_amount: float
-    status: str
-    receipt_pdf_url: str | None = None
-
-    class Config:
-        # Esto permite que Pydantic lea los datos desde un objeto de SQLAlchemy
-        from_attributes = True  # En Pydantic v1 era orm_mode = True
-
-
-class ClientStatusSummary(BaseModel):
-    """Resume el número de clientes por estado."""
-
-    active_clients: int
-    suspended_clients: int
-    total_clients: int
-
-
-class InvoiceStatusSummary(BaseModel):
-    """Resume el número de facturas por estado."""
-
-    pending: int
-    paid: int
-    overdue: int
-    total: int
-
-
-class DashboardStats(BaseModel):
-    """Schema principal para la respuesta del endpoint del panel de control."""
-
-    client_summary: ClientStatusSummary
-    invoice_summary: InvoiceStatusSummary
-    monthly_revenue: float
-    new_subscriptions_this_month: int
-
-
-PERMISSIONS_LIST = [
-    # Permisos de Usuarios
-    {"name": "users:create", "description": "Permite crear nuevos usuarios."},
-    {
-        "name": "users:read_all",
-        "description": "Permite ver la lista de todos los usuarios.",
-    },
-    {
-        "name": "users:update",
-        "description": "Permite actualizar los detalles de cualquier usuario.",
-    },
-    {"name": "users:delete", "description": "Permite eliminar usuarios."},
-    # Permisos de Planes
-    {"name": "plans:create", "description": "Permite crear nuevos planes de internet."},
-    {"name": "plans:update", "description": "Permite actualizar planes de internet."},
-    {"name": "plans:delete", "description": "Permite eliminar planes de internet."},
-    # Permisos de Pagos
-    {"name": "payments:create", "description": "Permite registrar nuevos pagos."},
-    # Permisos de Facturación
-    {
-        "name": "billing:generate_invoices",
-        "description": "Permite generar facturas mensuales masivamente.",
-    },
-    {
-        "name": "billing:process_overdue",
-        "description": "Permite procesar facturas vencidas.",
-    },
-    # Permisos de Roles
-    {
-        "name": "roles:manage",
-        "description": "Permite administrar roles y sus permisos.",
-    },
-]
-
-
-class PermissionOut(BaseModel):
-    """Schema de respuesta para un permiso."""
-
-    id: int
-    name: str
-    description: str | None = None
-
-    class Config:
-        from_attributes = True
-
-
-class RoleBase(BaseModel):
-    """Schema base para un rol."""
-
-    name: str
-    description: str | None = None
-
-
-class RoleCreate(RoleBase):
-    """Schema para crear un nuevo rol."""
-
-    pass
-
-
-class RoleOut(RoleBase):
-    """Schema de respuesta para un rol, incluyendo sus permisos."""
-
-    id: int
-    permissions: List[PermissionOut] = []
-
-    class Config:
-        from_attributes = True
-
-
-class RolePermissionUpdate(BaseModel):
-    """Schema para actualizar los permisos de un rol."""
-
-    permission_ids: List[int]
+class SettingsUpdate(BaseModel):
+    settings: List[Setting]

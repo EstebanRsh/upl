@@ -16,7 +16,6 @@ def login(user_credentials: InputLogin, db: Session = Depends(get_db)):
     username = user_credentials.username
     logger.info(f"Intento de inicio de sesión para: '{username}'.")
     try:
-        # Usamos joinedload para traer los detalles del usuario en una sola consulta
         user_in_db = (
             db.query(User)
             .options(joinedload(User.userdetail))
@@ -33,25 +32,31 @@ def login(user_credentials: InputLogin, db: Session = Depends(get_db)):
                 detail="Usuario o contraseña incorrectos",
             )
 
-        logger.info(f"Usuario '{username}' autenticado correctamente. Generando token.")
-        access_token = Security.generate_token(user_in_db)
+        if not user_in_db.userdetail:
+            logger.error(
+                f"¡CRÍTICO! El usuario '{username}' no tiene un UserDetail asociado."
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Error de configuración de la cuenta de usuario.",
+            )
 
+        logger.info(
+            f"Usuario '{username}' autenticado. Rol: '{user_in_db.userdetail.type}'. Generando token."
+        )
+
+        access_token = Security.generate_token(user_in_db)
         if not access_token:
-            # Esto sucedería si hay un error en la generación del token
             raise HTTPException(
                 status_code=500, detail="No se pudo generar el token de acceso."
             )
 
-        # Preparamos la información del usuario que se enviará al frontend
         user_info_for_frontend = {
             "username": user_in_db.username,
-            "first_name": (
-                user_in_db.userdetail.firstname if user_in_db.userdetail else "N/A"
-            ),
-            "role": user_in_db.userdetail.type if user_in_db.userdetail else "cliente",
+            "first_name": user_in_db.userdetail.firstname,
+            "role": user_in_db.userdetail.type,
         }
 
-        # No es necesario manejar refresh_token si simplificamos
         return JSONResponse(
             content={
                 "success": True,
@@ -60,6 +65,8 @@ def login(user_credentials: InputLogin, db: Session = Depends(get_db)):
                 "user": user_info_for_frontend,
             }
         )
+    except HTTPException as http_exc:
+        raise http_exc
     except Exception as e:
         db.rollback()
         logger.error(
@@ -100,7 +107,6 @@ def get_my_profile(authorization: str = Header(...), db: Session = Depends(get_d
             status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado."
         )
 
-    # Construimos la respuesta usando el modelo Pydantic
     user_response = UserOut(
         username=user.username,
         email=user.email,
@@ -112,7 +118,7 @@ def get_my_profile(authorization: str = Header(...), db: Session = Depends(get_d
         city=user.userdetail.city,
         phone=user.userdetail.phone,
         phone2=user.userdetail.phone2,
-        role=user.userdetail.type,  # Usamos el campo 'type' simplificado
+        role=user.userdetail.type,
     )
     return user_response
 

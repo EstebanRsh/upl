@@ -2,6 +2,7 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Box, Spinner, Heading, Text } from "@chakra-ui/react";
+import { AuthProvider } from "./context/AuthContext"; // <-- 1. Importamos el AuthProvider
 
 // Layouts y Rutas
 import MainLayout from "./components/layouts/MainLayout";
@@ -26,58 +27,63 @@ const Placeholder = ({ title }: { title: string }) => (
 
 function App() {
   return (
-    <BrowserRouter>
-      <Suspense
-        fallback={
-          <Box
-            display="flex"
-            justifyContent="center"
-            alignItems="center"
-            height="100vh"
-          >
-            <Spinner size="xl" />
-          </Box>
-        }
-      >
-        <Routes>
-          {/* Ruta pública para el login */}
-          <Route path="/login" element={<Login />} />
+    // 2. Envolvemos el BrowserRouter con AuthProvider
+    <AuthProvider>
+      <BrowserRouter>
+        <Suspense
+          fallback={
+            <Box
+              display="flex"
+              justifyContent="center"
+              alignItems="center"
+              height="100vh"
+            >
+              <Spinner size="xl" />
+            </Box>
+          }
+        >
+          <Routes>
+            {/* Ruta pública para el login */}
+            <Route path="/login" element={<Login />} />
 
-          {/* Aquí comienzan las rutas protegidas que requieren iniciar sesión */}
-          <Route element={<ProtectedRoutes />}>
-            <Route element={<MainLayout />}>
-              {/* --- Rutas para Clientes --- */}
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/payments" element={<PaymentHistory />} />
-              <Route path="/profile" element={<Profile />} />
-              <Route
-                path="/services"
-                element={<Placeholder title="Mis Servicios" />}
-              />
+            {/* Aquí comienzan las rutas protegidas que requieren iniciar sesión */}
+            <Route element={<ProtectedRoutes />}>
+              <Route element={<MainLayout />}>
+                {/* --- Rutas para Clientes --- */}
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/payments" element={<PaymentHistory />} />
+                <Route path="/profile" element={<Profile />} />
+                <Route
+                  path="/services"
+                  element={<Placeholder title="Mis Servicios" />}
+                />
 
-              {/* --- Sección de Rutas para Admin y Gerente --- */}
-              {/* 1. La ruta base es "/admin" y está protegida por AdminRoutes */}
-              <Route path="/admin" element={<AdminRoutes />}>
-                {/* 2. Estas rutas se anidan DENTRO de /admin */}
-                <Route path="dashboard" element={<AdminDashboard />} />
-                <Route path="clients" element={<ClientManagement />} />
-                <Route
-                  path="invoices"
-                  element={<Placeholder title="Gestionar Facturas" />}
-                />
-                <Route
-                  path="settings"
-                  element={<Placeholder title="Configuración" />}
-                />
+                {/* --- Sección de Rutas para Admin --- */}
+                <Route path="/admin" element={<AdminRoutes />}>
+                  {/* Estas rutas se anidan DENTRO de /admin */}
+                  <Route path="dashboard" element={<AdminDashboard />} />
+                  <Route path="clients" element={<ClientManagement />} />
+                  <Route
+                    path="invoices"
+                    element={<Placeholder title="Gestionar Facturas" />}
+                  />
+                  <Route
+                    path="settings"
+                    element={<Placeholder title="Configuración" />}
+                  />
+                </Route>
+
+                {/* Redirección por defecto si se accede a la raíz "/" */}
+                <Route path="/" element={<Navigate to="/dashboard" />} />
               </Route>
-
-              {/* Redirección por defecto si se accede a la raíz "/" */}
-              <Route path="/" element={<Navigate to="/dashboard" />} />
             </Route>
-          </Route>
-        </Routes>
-      </Suspense>
-    </BrowserRouter>
+
+            {/* Redirección final si no coincide nada */}
+            <Route path="*" element={<Navigate to="/login" />} />
+          </Routes>
+        </Suspense>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 

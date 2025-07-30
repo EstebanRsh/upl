@@ -1,6 +1,6 @@
 # models/models.py
 # -----------------------------------------------------------------------------
-# DEFINICIÓN DE MODELOS DE DATOS (VERSIÓN SIMPLIFICADA)
+# DEFINICIÓN DE MODELOS DE DATOS (VERSIÓN COMPLETA Y CORREGIDA)
 # -----------------------------------------------------------------------------
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -20,8 +20,6 @@ T = TypeVar("T")
 
 
 class User(Base):
-    """Modelo de la tabla 'users'. Almacena credenciales y datos básicos."""
-
     __tablename__ = "users"
     id = Column("id", Integer, primary_key=True)
     username = Column(String(50), nullable=False, unique=True)
@@ -29,7 +27,6 @@ class User(Base):
     email = Column("email", String(80), unique=True, nullable=True)
     id_userdetail = Column(Integer, ForeignKey("userdetails.id"))
     refresh_token = Column("refresh_token", String, nullable=True)
-
     userdetail = relationship(
         "UserDetail",
         uselist=False,
@@ -54,17 +51,12 @@ class User(Base):
 
 
 class UserDetail(Base):
-    """Modelo de la tabla 'userdetails'. Almacena datos personales y el rol."""
-
     __tablename__ = "userdetails"
     id = Column("id", Integer, primary_key=True)
     dni = Column("dni", Integer, unique=True, nullable=False)
     firstname = Column("firstname", String, nullable=False)
     lastname = Column("lastname", String, nullable=False)
-
-    # --- CAMBIO CLAVE: Campo de rol simplificado, como en appescuela ---
     type = Column("type", String(50), default="cliente", nullable=False)
-
     address = Column("address", String, nullable=True)
     barrio = Column("barrio", String, nullable=True)
     city = Column("city", String, nullable=True)
@@ -77,7 +69,7 @@ class UserDetail(Base):
         dni,
         firstname,
         lastname,
-        type="cliente",  # Agregamos 'type' al constructor
+        type="cliente",
         address=None,
         phone=None,
         city=None,
@@ -93,12 +85,6 @@ class UserDetail(Base):
         self.city = city
         self.barrio = barrio
         self.phone2 = phone2
-
-
-# --- MODELOS ELIMINADOS ---
-# Ya no se necesitan las clases Role, Permission ni la tabla role_permissions.
-
-# --- OTROS MODELOS (Permanecen igual) ---
 
 
 class InternetPlan(Base):
@@ -206,19 +192,37 @@ class InputLogin(BaseModel):
     password: str
 
 
-class UserOut(BaseModel):
-    username: str
-    email: EmailStr
-    dni: int
-    firstname: str
-    lastname: str
+class InputPlan(BaseModel):
+    name: str
+    speed_mbps: int
+    price: float
+
+
+class InputPayment(BaseModel):
+    plan_id: int
+    user_id: int
+    amount: float
+
+
+class InputSubscription(BaseModel):
+    user_id: int
+    plan_id: int
+
+
+class UpdatePlan(BaseModel):
+    name: str | None = None
+    speed_mbps: int | None = None
+    price: float | None = None
+
+
+class UpdateUserDetail(BaseModel):
+    firstname: str | None = None
+    lastname: str | None = None
     address: str | None = None
-    barrio: str | None = None
-    city: str | None = None
     phone: str | None = None
+    city: str | None = None
+    barrio: str | None = None
     phone2: str | None = None
-    role: str  # Simplificado de 'role_obj' a 'role'
-    model_config = ConfigDict(from_attributes=True)
 
 
 class UpdateMyDetails(BaseModel):
@@ -243,17 +247,51 @@ class PaginatedResponse(BaseModel, Generic[T]):
     items: List[T]
 
 
-class UpdateUserDetail(BaseModel):
-    firstname: str | None = None
-    lastname: str | None = None
+class UserOut(BaseModel):
+    username: str
+    email: EmailStr
+    dni: int
+    firstname: str
+    lastname: str
     address: str | None = None
-    phone: str | None = None
-    city: str | None = None
     barrio: str | None = None
+    city: str | None = None
+    phone: str | None = None
     phone2: str | None = None
+    role: str
+    model_config = ConfigDict(from_attributes=True)
 
 
-# ... (Otros modelos Pydantic que no dependen de Role/Permission pueden permanecer)
+class PlanOut(BaseModel):
+    id: int
+    name: str
+    speed_mbps: int
+    price: float
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PaymentOut(BaseModel):
+    id: int
+    user_id: int
+    amount: float
+    payment_date: datetime.datetime
+    invoice_id: int | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+# --- MODELOS RESTAURADOS ---
+class InvoiceOut(BaseModel):
+    id: int
+    issue_date: datetime.datetime
+    due_date: datetime.datetime
+    base_amount: float
+    late_fee: float
+    total_amount: float
+    status: str
+    receipt_pdf_url: str | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ClientStatusSummary(BaseModel):
     active_clients: int
     suspended_clients: int

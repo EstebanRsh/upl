@@ -1,6 +1,7 @@
 // src/components/Login.tsx
-import { useState } from "react";
+import { useState, useContext } from "react";
 import { useNavigate } from "react-router-dom";
+import { AuthContext, User } from "../context/AuthContext";
 import {
   Box,
   Button,
@@ -9,66 +10,67 @@ import {
   Input,
   VStack,
   Heading,
-  useToast,
+  Alert,
+  AlertIcon,
   InputGroup,
   InputRightElement,
 } from "@chakra-ui/react";
 
+// Definimos el tipo de la respuesta que esperamos del backend
 type LoginResponse = {
   success?: boolean;
   access_token?: string;
-  detail?: string;
+  user?: User; // Usamos la interfaz User de nuestro AuthContext
+  detail?: string; // Para los mensajes de error
 };
 
-export default function Login() {
+const Login = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
-  const toast = useToast();
-  const LOGIN_URL = `http://localhost:8000/api/users/login`;
+  const auth = useContext(AuthContext); // Obtenemos el contexto de autenticación
 
-  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    setLoading(true);
+    setError(null);
 
     try {
-      const response = await fetch(LOGIN_URL, {
+      const response = await fetch("http://localhost:8000/api/users/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username, password: password }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ username, password }),
       });
 
       const data: LoginResponse = await response.json();
 
-      if (!response.ok) {
-        throw new Error(data.detail || `Error: ${response.statusText}`);
+      // Verificación más estricta de la respuesta
+      if (!response.ok || !data.success || !data.access_token || !data.user) {
+        throw new Error(
+          data.detail ||
+            "Credenciales incorrectas o respuesta inválida del servidor."
+        );
       }
 
-      if (data.success && data.access_token) {
-        localStorage.setItem("token", data.access_token);
-        localStorage.removeItem("user");
-        toast({
-          title: "Inicio de sesión exitoso.",
-          status: "success",
-          duration: 3000,
-          isClosable: true,
-        });
-        navigate("/dashboard");
-      } else {
-        throw new Error("La respuesta del servidor no fue la esperada.");
-      }
-    } catch (error: any) {
-      toast({
-        title: "Error al iniciar sesión",
-        description: error.message,
-        status: "error",
-        duration: 5000,
-        isClosable: true,
-      });
+      // --- ¡ESTA ES LA CORRECCIÓN CLAVE! ---
+      // Usamos la función 'login' del AuthContext para manejar el estado.
+      // Esta función se encarga de actualizar el estado y guardar en localStorage.
+      auth.login(data.access_token, data.user);
+
+      // Ahora que el estado está actualizado, redirigimos.
+      // El rol se verificará en el componente Dashboard.
+      navigate("/dashboard");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Ocurrió un error inesperado."
+      );
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
@@ -77,55 +79,71 @@ export default function Login() {
       display="flex"
       alignItems="center"
       justifyContent="center"
-      height="100vh"
-      bg="gray.100"
+      minHeight="100vh"
+      bg="gray.800"
     >
-      <Box bg="white" p={8} rounded="md" shadow="md" width="100%" maxW="md">
-        <form onSubmit={handleLogin}>
-          <VStack spacing={4}>
-            <Heading as="h1" size="lg">
-              Iniciar Sesión
-            </Heading>
-            <FormControl isRequired>
-              <FormLabel htmlFor="username">Usuario</FormLabel>
+      <Box
+        p={8}
+        maxWidth="400px"
+        width="100%"
+        bg="gray.700"
+        color="white"
+        borderWidth={1}
+        borderColor="gray.600"
+        borderRadius={8}
+        boxShadow="lg"
+      >
+        <VStack as="form" onSubmit={handleSubmit} spacing={4}>
+          <Heading>Iniciar Sesión</Heading>
+          {error && (
+            <Alert status="error" borderRadius="md">
+              <AlertIcon />
+              {error}
+            </Alert>
+          )}
+          <FormControl isRequired>
+            <FormLabel>Usuario</FormLabel>
+            <Input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              bg="gray.600"
+              border="none"
+            />
+          </FormControl>
+          <FormControl isRequired>
+            <FormLabel>Contraseña</FormLabel>
+            <InputGroup>
               <Input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                bg="gray.600"
+                border="none"
               />
-            </FormControl>
-            <FormControl isRequired>
-              <FormLabel htmlFor="password">Contraseña</FormLabel>
-              <InputGroup>
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-                <InputRightElement width="4.5rem">
-                  <Button
-                    h="1.75rem"
-                    size="sm"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? "Ocultar" : "Mostrar"}
-                  </Button>
-                </InputRightElement>
-              </InputGroup>
-            </FormControl>
-            <Button
-              type="submit"
-              colorScheme="teal"
-              width="full"
-              isLoading={isLoading}
-            >
-              Ingresar
-            </Button>
-          </VStack>
-        </form>
+              <InputRightElement width="4.5rem">
+                <Button
+                  h="1.75rem"
+                  size="sm"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? "Ocultar" : "Mostrar"}
+                </Button>
+              </InputRightElement>
+            </InputGroup>
+          </FormControl>
+          <Button
+            type="submit"
+            colorScheme="teal"
+            width="full"
+            isLoading={loading}
+          >
+            Ingresar
+          </Button>
+        </VStack>
       </Box>
     </Box>
   );
-}
+};
+
+export default Login;

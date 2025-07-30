@@ -21,9 +21,8 @@ import {
 } from "@chakra-ui/react";
 import { useNavigate } from "react-router-dom";
 import { ClientSearch } from "../../components/admin/ClientSearch";
-import { Pagination } from "../../components/payments/Pagination"; // Reutilizamos la paginación
+import { Pagination } from "../../components/payments/Pagination";
 
-// El tipo de dato para un usuario, basado en tu modelo UserOut
 export type User = {
   username: string;
   email: string;
@@ -76,24 +75,25 @@ function ClientManagement() {
   }, [currentPage, searchTerm]);
 
   const handleSearch = (term: string) => {
-    setCurrentPage(1); // Volver a la página 1 al buscar
+    setCurrentPage(1);
     setSearchTerm(term);
   };
 
+  // --- INICIO DE LA CORRECCIÓN ---
+  // Simplificamos la función para que maneje solo los nuevos roles
   const getRoleBadge = (role: string) => {
-    const roles = {
-      Admin: "red",
-      Gerente: "pink",
-      Técnico: "blue",
-      Cobrador: "green",
-      Cliente: "purple",
+    const roleConfig = {
+      administrador: { scheme: "red", label: "Admin" },
+      cliente: { scheme: "purple", label: "Cliente" },
     };
-    return (
-      <Badge colorScheme={roles[role as keyof typeof roles] || "gray"}>
-        {role}
-      </Badge>
-    );
+    const config = roleConfig[role as keyof typeof roleConfig] || {
+      scheme: "gray",
+      label: "Desconocido",
+    };
+
+    return <Badge colorScheme={config.scheme}>{config.label}</Badge>;
   };
+  // --- FIN DE LA CORRECCIÓN ---
 
   const renderContent = () => {
     if (isLoading) {

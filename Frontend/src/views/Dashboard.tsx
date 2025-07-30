@@ -48,16 +48,16 @@ function Dashboard() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (
-      !loading &&
-      user &&
-      (user.role === "Admin" || user.role === "Gerente")
-    ) {
+    // --- INICIO DE LA CORRECCIÓN ---
+    // Ahora solo verificamos si el rol es 'administrador'
+    if (!loading && user && user.role === "administrador") {
       navigate("/admin/dashboard", { replace: true });
     }
+    // --- FIN DE LA CORRECCIÓN ---
   }, [user, loading, navigate]);
 
-  if (loading || (user && (user.role === "Admin" || user.role === "Gerente"))) {
+  // La lógica para mostrar el spinner mientras se decide la redirección es correcta
+  if (loading || (user && user.role === "administrador")) {
     return (
       <Box
         display="flex"
@@ -70,7 +70,7 @@ function Dashboard() {
     );
   }
 
-  // Esto solo se renderizará para el rol "Cliente"
+  // Esto solo se renderizará para el rol "cliente"
   return (
     <Box p={8} bg="gray.800" color="white" minH="calc(100vh - 4rem)">
       <VStack spacing={4} align="stretch" mb={10}>

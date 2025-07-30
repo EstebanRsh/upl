@@ -1,13 +1,17 @@
 # routes/payment_routes.py
-# -----------------------------------------------------------------------------
-# RUTAS DE GESTIÓN DE PAGOS (VERSIÓN SIMPLIFICADA)
-# -----------------------------------------------------------------------------
 import logging
 import math
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload
-from models.models import Payment, InputPayment, Invoice, PaginatedResponse, PaymentOut
+
+# --- INICIO DE LA CORRECCIÓN DE IMPORTACIONES ---
+from models.models import Payment, InputPayment, Invoice
+from schemas.payment_schemas import PaymentOut
+from schemas.common_schemas import PaginatedResponse
+
+# --- FIN DE LA CORRECCIÓN DE IMPORTACIONES ---
+
 from auth.security import Security
 from config.db import get_db
 from services.payment_service import process_new_payment, PaymentException
@@ -16,11 +20,8 @@ logger = logging.getLogger(__name__)
 payment_router = APIRouter()
 
 
-# --- Dependencia de Seguridad Simplificada ---
 def verify_admin_permission(authorization: str = Header(...)):
-    """
-    Verifica que el token en la cabecera pertenezca a un administrador.
-    """
+    """Verifica que el token en la cabecera pertenezca a un administrador."""
     token_data = Security.verify_token({"authorization": authorization})
     if not token_data.get("success") or token_data.get("role") != "administrador":
         raise HTTPException(
@@ -42,7 +43,6 @@ def add_payment(payment_data: InputPayment, db: Session = Depends(get_db)):
         f"Iniciando el registro de un pago para el usuario ID {payment_data.user_id}."
     )
     try:
-        # La lógica de negocio para procesar el pago se mantiene en el servicio
         result = process_new_payment(payment_data, db)
         db.commit()
         logger.info(
@@ -79,11 +79,6 @@ def get_user_payments(
     requesting_user_id = token_data.get("user_id")
     requesting_user_role = token_data.get("role")
 
-    logger.info(
-        f"Usuario ID {requesting_user_id} solicitando pagos para el usuario ID: {user_id}."
-    )
-
-    # Un usuario puede ver sus propios pagos, o un admin puede ver los de cualquiera.
     if requesting_user_role != "administrador" and requesting_user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -103,10 +98,9 @@ def get_user_payments(
         .all()
     )
 
-    items_list = [PaymentOut.model_validate(p) for p in payments]
     return PaginatedResponse(
         total_items=total_items,
         total_pages=math.ceil(total_items / size),
         current_page=page,
-        items=items_list,
+        items=payments,
     )

@@ -1,6 +1,6 @@
 # models/models.py
 # -----------------------------------------------------------------------------
-# DEFINICIÓN DE MODELOS DE DATOS (VERSIÓN COMPLETA Y CORREGIDA)
+# DEFINICIÓN DE MODELOS DE DATOS (VERSIÓN FINAL Y LIMPIA)
 # -----------------------------------------------------------------------------
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -8,15 +8,13 @@ from config.db import Base
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float
 from sqlalchemy.orm import relationship
 import datetime
-from typing import List, TypeVar, Generic
 from core.constants import (
     SUBSCRIPTION_STATUS_ACTIVE,
     INVOICE_STATUS_PENDING,
 )
 
-T = TypeVar("T")
-
 # --- Modelos de la Base de Datos (SQLAlchemy) ---
+# Estas son las clases que definen la estructura de tus tablas.
 
 
 class User(Base):
@@ -169,7 +167,9 @@ class Invoice(Base):
         self.total_amount = total_amount
 
 
-# --- Modelos Pydantic (para validación en las rutas) ---
+# --- Modelos Pydantic Esenciales (Solo para entrada de datos) ---
+# Dejamos aquí solo los modelos que FastAPI necesita para validar los JSON
+# que recibe en las peticiones (POST, PUT, etc.).
 
 
 class InputUser(BaseModel):
@@ -238,85 +238,3 @@ class UpdateMyDetails(BaseModel):
 class UpdateMyPassword(BaseModel):
     current_password: str
     new_password: str = Field(..., min_length=8)
-
-
-class PaginatedResponse(BaseModel, Generic[T]):
-    total_items: int
-    total_pages: int
-    current_page: int
-    items: List[T]
-
-
-class UserOut(BaseModel):
-    username: str
-    email: EmailStr
-    dni: int
-    firstname: str
-    lastname: str
-    address: str | None = None
-    barrio: str | None = None
-    city: str | None = None
-    phone: str | None = None
-    phone2: str | None = None
-    role: str
-    model_config = ConfigDict(from_attributes=True)
-
-
-class PlanOut(BaseModel):
-    id: int
-    name: str
-    speed_mbps: int
-    price: float
-    model_config = ConfigDict(from_attributes=True)
-
-
-class PaymentOut(BaseModel):
-    id: int
-    user_id: int
-    amount: float
-    payment_date: datetime.datetime
-    invoice_id: int | None = None
-    model_config = ConfigDict(from_attributes=True)
-
-
-# --- MODELOS RESTAURADOS ---
-class InvoiceOut(BaseModel):
-    id: int
-    issue_date: datetime.datetime
-    due_date: datetime.datetime
-    base_amount: float
-    late_fee: float
-    total_amount: float
-    status: str
-    receipt_pdf_url: str | None = None
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ClientStatusSummary(BaseModel):
-    active_clients: int
-    suspended_clients: int
-    total_clients: int
-
-
-class InvoiceStatusSummary(BaseModel):
-    pending: int
-    paid: int
-    overdue: int
-    total: int
-
-
-class DashboardStats(BaseModel):
-    client_summary: ClientStatusSummary
-    invoice_summary: InvoiceStatusSummary
-    monthly_revenue: float
-    new_subscriptions_this_month: int
-
-
-class Setting(BaseModel):
-    setting_name: str
-    setting_value: str
-    description: str | None = None
-
-
-class SettingsUpdate(BaseModel):
-    settings: List[Setting]

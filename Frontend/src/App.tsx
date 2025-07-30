@@ -8,6 +8,8 @@ import { AuthProvider } from "./context/AuthContext"; // <-- 1. Importamos el Au
 import MainLayout from "./components/layouts/MainLayout";
 import ProtectedRoutes from "./components/router/ProtectedRoutes";
 import AdminRoutes from "./components/router/AdminRoutes";
+import InvoiceManagement from "./views/admin/InvoiceManagement";
+import InvoiceDetailView from "./views/admin/InvoiceDetailView";
 
 // Vistas
 const Login = lazy(() => import("./components/Login"));
@@ -63,9 +65,10 @@ function App() {
                   {/* Estas rutas se anidan DENTRO de /admin */}
                   <Route path="dashboard" element={<AdminDashboard />} />
                   <Route path="clients" element={<ClientManagement />} />
+                  <Route path="invoices" element={<InvoiceManagement />} />
                   <Route
-                    path="invoices"
-                    element={<Placeholder title="Gestionar Facturas" />}
+                    path="invoices/:invoiceId"
+                    element={<InvoiceDetailView />}
                   />
                   <Route
                     path="settings"

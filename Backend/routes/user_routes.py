@@ -3,7 +3,13 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Header
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload
-from models.models import User, InputLogin, UserOut, UpdateMyDetails, UpdateMyPassword
+
+# Modelos de la DB y de ENTRADA
+from models.models import User, InputLogin, UpdateMyDetails, UpdateMyPassword
+
+# Modelos de RESPUESTA (schemas)
+from schemas.user_schemas import UserOut
+
 from auth.security import Security
 from config.db import get_db
 
@@ -107,7 +113,9 @@ def get_my_profile(authorization: str = Header(...), db: Session = Depends(get_d
             status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado."
         )
 
-    user_response = UserOut(
+    # --- INICIO DE LA CORRECCIÓN CLAVE ---
+    # Construimos la respuesta manualmente para que Pydantic no falle.
+    return UserOut(
         username=user.username,
         email=user.email,
         dni=user.userdetail.dni,
@@ -120,7 +128,7 @@ def get_my_profile(authorization: str = Header(...), db: Session = Depends(get_d
         phone2=user.userdetail.phone2,
         role=user.userdetail.type,
     )
-    return user_response
+    # --- FIN DE LA CORRECCIÓN CLAVE ---
 
 
 @user_router.put("/users/me", summary="Actualizar mis datos", tags=["Cliente"])

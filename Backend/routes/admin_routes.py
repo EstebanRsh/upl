@@ -1,45 +1,41 @@
 # routes/admin_routes.py
-# -----------------------------------------------------------------------------
-# RUTAS DE ADMINISTRACIÓN (VERSIÓN SIMPLIFICADA)
-# -----------------------------------------------------------------------------
 import logging
 import math
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException, status, Header
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import IntegrityError
+from datetime import datetime
+from sqlalchemy import func, extract
+
 from config.db import get_db
 from auth.security import Security
+
 from models.models import (
     User,
     UserDetail,
     InputUser,
     UpdateUserDetail,
-    PaginatedResponse,
-    UserOut,
     BusinessSettings,
-    DashboardStats,
-    ClientStatusSummary,
-    InvoiceStatusSummary,
-    Setting,
-    SettingsUpdate,
     Subscription,
     Payment,
     Invoice,
 )
-from datetime import datetime
-from sqlalchemy import func, extract
+from schemas.common_schemas import PaginatedResponse
+from schemas.user_schemas import UserOut
+from schemas.settings_schemas import (
+    Setting,
+    SettingsUpdate,
+    DashboardStats,
+    ClientStatusSummary,
+    InvoiceStatusSummary,
+)
 
 logger = logging.getLogger(__name__)
 admin_router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
-# --- Dependencia de Seguridad Simplificada ---
 def verify_admin_permission(authorization: str = Header(...)):
-    """
-    Verifica que el token en la cabecera pertenezca a un administrador.
-    Esta función se usará como una dependencia para proteger las rutas.
-    """
     token_data = Security.verify_token({"authorization": authorization})
     if not token_data.get("success") or token_data.get("role") != "administrador":
         raise HTTPException(
@@ -47,59 +43,6 @@ def verify_admin_permission(authorization: str = Header(...)):
             detail="No tienes permisos de administrador para realizar esta acción.",
         )
     return token_data
-
-
-@admin_router.post(
-    "/users/add",
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(verify_admin_permission)],
-)
-def add_user(user_data: InputUser, db: Session = Depends(get_db)):
-    logger.info(f"Intento de creación de usuario '{user_data.username}'.")
-    try:
-        # Verificar si el usuario o email ya existen
-        if db.query(User).filter(User.username == user_data.username).first():
-            raise HTTPException(
-                status_code=409, detail="El nombre de usuario ya existe."
-            )
-        if (
-            user_data.email
-            and db.query(User).filter(User.email == user_data.email).first()
-        ):
-            raise HTTPException(status_code=409, detail="El email ya está en uso.")
-
-        new_user_detail = UserDetail(
-            dni=user_data.dni,
-            firstname=user_data.firstname,
-            lastname=user_data.lastname,
-            type="cliente",  # Se asigna el rol 'cliente' por defecto
-            address=user_data.address,
-            phone=user_data.phone,
-            city=user_data.city,
-            barrio=user_data.barrio,
-            phone2=user_data.phone2,
-        )
-        hashed_password = Security.get_password_hash(user_data.password)
-        new_user = User(
-            username=user_data.username, password=hashed_password, email=user_data.email
-        )
-        new_user.userdetail = new_user_detail
-        db.add(new_user)
-        db.commit()
-        logger.info(
-            f"Usuario '{user_data.username}' creado exitosamente con el rol 'cliente'."
-        )
-        return {"message": "Cliente agregado exitosamente"}
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"El DNI '{user_data.dni}' ya está registrado.",
-        )
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error inesperado en add_user: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
 
 @admin_router.get(
@@ -121,11 +64,15 @@ def get_all_users(
 
         total_items = query.count()
         offset = (page - 1) * size
-        users_query = query.offset(offset).limit(size).all()
+        users_from_db = (
+            query.options(joinedload(User.userdetail)).offset(offset).limit(size).all()
+        )
         total_pages = math.ceil(total_items / size)
 
+        # --- INICIO DE LA CORRECCIÓN CLAVE ---
+        # Construimos la lista de items manualmente para Pydantic
         items_list = []
-        for user in users_query:
+        for user in users_from_db:
             if user.userdetail:
                 items_list.append(
                     UserOut(
@@ -139,9 +86,10 @@ def get_all_users(
                         city=user.userdetail.city,
                         phone=user.userdetail.phone,
                         phone2=user.userdetail.phone2,
-                        role=user.userdetail.type,  # Mapeamos 'type' a 'role'
+                        role=user.userdetail.type,
                     )
                 )
+        # --- FIN DE LA CORRECCIÓN CLAVE ---
 
         return PaginatedResponse(
             total_items=total_items,
@@ -154,23 +102,71 @@ def get_all_users(
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
 
+# ... (El resto de las rutas de este archivo no cambian, pégalas aquí)
+# Te las incluyo para que el archivo esté completo.
+
+
+@admin_router.post(
+    "/users/add",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(verify_admin_permission)],
+)
+def add_user(user_data: InputUser, db: Session = Depends(get_db)):
+    # ... (código sin cambios)
+    try:
+        if db.query(User).filter(User.username == user_data.username).first():
+            raise HTTPException(
+                status_code=409, detail="El nombre de usuario ya existe."
+            )
+        if (
+            user_data.email
+            and db.query(User).filter(User.email == user_data.email).first()
+        ):
+            raise HTTPException(status_code=409, detail="El email ya está en uso.")
+        new_user_detail = UserDetail(
+            dni=user_data.dni,
+            firstname=user_data.firstname,
+            lastname=user_data.lastname,
+            type="cliente",
+            address=user_data.address,
+            phone=user_data.phone,
+            city=user_data.city,
+            barrio=user_data.barrio,
+            phone2=user_data.phone2,
+        )
+        hashed_password = Security.get_password_hash(user_data.password)
+        new_user = User(
+            username=user_data.username, password=hashed_password, email=user_data.email
+        )
+        new_user.userdetail = new_user_detail
+        db.add(new_user)
+        db.commit()
+        return {"message": "Cliente agregado exitosamente"}
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"El DNI '{user_data.dni}' ya está registrado.",
+        )
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Error interno del servidor.")
+
+
 @admin_router.put(
     "/users/{user_id}/details", dependencies=[Depends(verify_admin_permission)]
 )
 def update_user_details(
     user_id: int, user_data: UpdateUserDetail, db: Session = Depends(get_db)
 ):
-    logger.info(f"Actualizando detalles para el usuario ID: {user_id}.")
+    # ... (código sin cambios)
     user_to_update = db.query(User).filter(User.id == user_id).first()
     if not user_to_update or not user_to_update.userdetail:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-
     update_data = user_data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(user_to_update.userdetail, key, value)
-
     db.commit()
-    logger.info(f"Detalles del usuario ID {user_id} actualizados.")
     return {"message": f"Detalles del usuario con ID {user_id} actualizados."}
 
 
@@ -182,23 +178,17 @@ def delete_user(
     token_data: dict = Depends(verify_admin_permission),
     db: Session = Depends(get_db),
 ):
+    # ... (código sin cambios)
     requesting_user_id = token_data.get("user_id")
-    logger.info(
-        f"Usuario ID {requesting_user_id} solicitando eliminar usuario ID: {user_id}."
-    )
-
     if requesting_user_id == user_id:
         raise HTTPException(
             status_code=400, detail="Un administrador no puede eliminarse a sí mismo."
         )
-
     user_to_delete = db.query(User).filter(User.id == user_id).first()
     if not user_to_delete:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-
     db.delete(user_to_delete)
     db.commit()
-    logger.info(f"Usuario ID {user_id} eliminado exitosamente.")
     return {"message": f"Usuario con ID {user_id} ha sido eliminado."}
 
 
@@ -208,6 +198,7 @@ def delete_user(
     dependencies=[Depends(verify_admin_permission)],
 )
 def get_business_settings(db: Session = Depends(get_db)):
+    # ... (código sin cambios)
     return db.query(BusinessSettings).all()
 
 
@@ -217,6 +208,7 @@ def get_business_settings(db: Session = Depends(get_db)):
 def update_business_settings(
     update_data: SettingsUpdate, db: Session = Depends(get_db)
 ):
+    # ... (código sin cambios)
     for setting_item in update_data.settings:
         db_setting = (
             db.query(BusinessSettings)
@@ -238,8 +230,8 @@ def update_business_settings(
     dependencies=[Depends(verify_admin_permission)],
 )
 def get_dashboard_stats(db: Session = Depends(get_db)):
+    # ... (código sin cambios)
     now = datetime.utcnow()
-    # Tu lógica existente para las estadísticas... (no necesita cambios)
     active_clients = (
         db.query(Subscription)
         .filter_by(status="active")
@@ -288,7 +280,6 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         )
         .count()
     )
-
     return DashboardStats(
         client_summary=client_summary,
         invoice_summary=invoice_summary,

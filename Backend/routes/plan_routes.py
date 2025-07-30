@@ -1,19 +1,24 @@
 # routes/plan_routes.py
-# -----------------------------------------------------------------------------
-# RUTAS DE GESTIÓN DE PLANES DE INTERNET (CRUD - VERSIÓN SIMPLIFICADA)
-# -----------------------------------------------------------------------------
 import logging
 import math
 from fastapi import APIRouter, Depends, Query, HTTPException, status, Header
 from sqlalchemy.orm import Session
+
+# --- INICIO DE LA CORRECCIÓN DE IMPORTACIONES ---
+# Modelos de la DB y de ENTRADA
 from models.models import (
     InternetPlan,
     InputPlan,
     UpdatePlan,
-    PaginatedResponse,
-    PlanOut,
     Subscription,
 )
+
+# Modelos de RESPUESTA (schemas)
+from schemas.plan_schemas import PlanOut
+from schemas.common_schemas import PaginatedResponse
+
+# --- FIN DE LA CORRECCIÓN DE IMPORTACIONES ---
+
 from config.db import get_db
 from auth.security import Security
 
@@ -21,11 +26,8 @@ logger = logging.getLogger(__name__)
 plan_router = APIRouter()
 
 
-# --- Dependencia de Seguridad Simplificada (Recomendación: mover a un archivo auth/dependencies.py) ---
 def verify_admin_permission(authorization: str = Header(...)):
-    """
-    Verifica que el token en la cabecera pertenezca a un administrador.
-    """
+    """Verifica que el token en la cabecera pertenezca a un administrador."""
     token_data = Security.verify_token({"authorization": authorization})
     if not token_data.get("success") or token_data.get("role") != "administrador":
         raise HTTPException(
@@ -63,7 +65,6 @@ def get_all_plans(
     size: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    # Esta ruta es pública y no necesita cambios en su lógica.
     logger.info("Solicitud pública para obtener todos los planes.")
     try:
         total_items = db.query(InternetPlan).count()

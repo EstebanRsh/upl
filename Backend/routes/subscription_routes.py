@@ -2,7 +2,13 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session, joinedload
+
+# --- INICIO DE LA CORRECCIÓN DE IMPORTACIONES ---
 from models.models import Subscription, InputSubscription, User
+
+# No se necesitan schemas de respuesta específicos para este archivo por ahora
+# --- FIN DE LA CORRECCIÓN DE IMPORTACIONES ---
+
 from auth.security import Security
 from config.db import get_db
 
@@ -10,11 +16,8 @@ logger = logging.getLogger(__name__)
 subscription_router = APIRouter()
 
 
-# --- Dependencia de Seguridad Simplificada (Recomendación: mover a un archivo auth/dependencies.py) ---
 def verify_admin_permission(authorization: str = Header(...)):
-    """
-    Verifica que el token en la cabecera pertenezca a un administrador.
-    """
+    """Verifica que el token en la cabecera pertenezca a un administrador."""
     token_data = Security.verify_token({"authorization": authorization})
     if not token_data.get("success") or token_data.get("role") != "administrador":
         raise HTTPException(
@@ -72,7 +75,6 @@ def get_user_subscriptions(
         f"Usuario ID {requesting_user_id} solicitando suscripciones del usuario ID: {user_id}."
     )
 
-    # Un usuario puede ver sus propias suscripciones, o un admin puede ver las de cualquiera.
     if requesting_user_role != "administrador" and requesting_user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

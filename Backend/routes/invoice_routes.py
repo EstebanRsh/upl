@@ -3,10 +3,16 @@ import logging
 import shutil
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Header
 from sqlalchemy.orm import Session
+import os
+
+# --- INICIO DE LA CORRECCIÓN DE IMPORTACIONES ---
+# Modelos de la base de datos (SQLAlchemy)
 from models.models import Invoice
+
+# --- FIN DE LA CORRECCIÓN DE IMPORTACIONES ---
+
 from auth.security import Security
 from config.db import get_db
-import os
 
 logger = logging.getLogger(__name__)
 invoice_router = APIRouter()
@@ -58,9 +64,7 @@ def upload_receipt(
 
         # Actualizar la factura para indicar que el pago está pendiente de revisión
         invoice.status = "in_review"
-        invoice.receipt_pdf_url = (
-            file_path  # Guardamos la ruta para referencia del admin
-        )
+        invoice.receipt_pdf_url = file_path
         db.commit()
 
         logger.info(f"Comprobante para factura {invoice_id} guardado en '{file_path}'.")

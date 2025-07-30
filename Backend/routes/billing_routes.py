@@ -351,3 +351,29 @@ def update_invoice_status(
 
     # Devolvemos la factura actualizada para que el frontend pueda refrescar los datos
     return get_invoice_by_id_for_admin(invoice_id=invoice_id, db=db)
+
+
+@billing_router.get(
+    "/users/me/invoices/{invoice_id}",
+    response_model=InvoiceOut,
+    tags=["Cliente"],
+)
+def get_my_invoice_by_id(
+    invoice_id: int,
+    authorization: str = Header(...),
+    db: Session = Depends(get_db),
+):
+    token_data = Security.verify_token({"authorization": authorization})
+    if not token_data.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=token_data.get("message"),
+        )
+
+    user_id = token_data.get("user_id")
+    invoice = db.query(Invoice).filter_by(id=invoice_id, user_id=user_id).first()
+
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+
+    return invoice

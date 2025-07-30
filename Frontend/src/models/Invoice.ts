@@ -19,3 +19,16 @@ export interface InvoiceAdminOut {
   receipt_pdf_url: string | null;
   user: UserBasicInfo;
 }
+
+export interface InvoiceAdminOut {
+  id: number;
+  issue_date: string;
+  due_date: string;
+  base_amount: number;
+  late_fee: number;
+  total_amount: number;
+  status: "pending" | "paid" | "overdue" | "in_review";
+  receipt_pdf_url: string | null;
+  user_receipt_url: string | null; 
+  user: UserBasicInfo;
+}

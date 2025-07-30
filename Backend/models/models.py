@@ -155,6 +155,7 @@ class Invoice(Base):
     total_amount = Column(Float, nullable=False)
     status = Column(String, default=INVOICE_STATUS_PENDING)
     receipt_pdf_url = Column(String, nullable=True)
+    user_receipt_url = Column(String, nullable=True)
     user = relationship("User", back_populates="invoices")
     subscription = relationship("Subscription")
     payments = relationship("Payment", back_populates="invoice")

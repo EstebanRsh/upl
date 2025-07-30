@@ -20,7 +20,7 @@ import {
   Heading,
   Link as ChakraLink,
 } from "@chakra-ui/react";
-import { FaFilePdf, FaUpload, FaEye } from "react-icons/fa";
+import { FaUpload, FaEye } from "react-icons/fa";
 import { Invoice } from "../../views/PaymentHistory";
 
 // --- Sub-componentes visuales ---
@@ -38,7 +38,6 @@ const StatusBadge = ({ status }: { status: Invoice["status"] }) => {
 const ActionButtons = ({
   invoice,
   onUploadClick,
-  onDownloadClick,
   isMobile,
 }: {
   invoice: Invoice;
@@ -52,17 +51,18 @@ const ActionButtons = ({
     alignItems="center"
   >
     <HStack spacing={2} w={isMobile ? "100%" : "auto"}>
-      {invoice.status === "paid" && invoice.receipt_pdf_url && (
-        <Button
-          onClick={() => onDownloadClick(invoice.id)}
-          size="sm"
-          colorScheme="blue"
-          leftIcon={<Icon as={FaFilePdf} />}
-          flexGrow={isMobile ? 1 : 0}
-        >
-          Recibo
-        </Button>
-      )}
+      <Button
+        as={ChakraLink}
+        href={`/payments/${invoice.id}`}
+        size="sm"
+        variant="solid"
+        colorScheme="blue"
+        leftIcon={<Icon as={FaEye} />}
+        flexGrow={isMobile ? 1 : 0}
+      >
+        Ver
+      </Button>
+
       {invoice.user_receipt_url && (
         <Button
           as={ChakraLink}

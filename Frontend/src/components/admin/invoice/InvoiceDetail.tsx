@@ -146,16 +146,19 @@ export const InvoiceDetail = ({
               Marcar como Pagada
             </Button>
           )}
-          {invoice.receipt_pdf_url && (
-            <Button
-              colorScheme="blue"
-              as="a"
-              href={`http://localhost:8000/facturas/${invoice.receipt_pdf_url}`}
-              target="_blank"
-            >
-              Ver Recibo
-            </Button>
-          )}
+          {invoice.receipt_pdf_url ||
+            (invoice.user_receipt_url && (
+              <Button
+                colorScheme="blue"
+                as="a"
+                href={`http://localhost:8000/facturas/${
+                  invoice.receipt_pdf_url || invoice.user_receipt_url
+                }`}
+                target="_blank"
+              >
+                Ver Recibo
+              </Button>
+            ))}
         </HStack>
       </Box>
     </VStack>

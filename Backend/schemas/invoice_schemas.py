@@ -23,6 +23,7 @@ class InvoiceOut(BaseModel):
     total_amount: float
     status: str
     receipt_pdf_url: str | None = None
+    user_receipt_url: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 

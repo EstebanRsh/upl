@@ -10,6 +10,7 @@ import ProtectedRoutes from "./components/router/ProtectedRoutes";
 import AdminRoutes from "./components/router/AdminRoutes";
 import InvoiceManagement from "./views/admin/InvoiceManagement";
 import InvoiceDetailView from "./views/admin/InvoiceDetailView";
+import ClientInvoiceDetailView from "./views/client/ClientInvoiceDetailView";
 
 // Vistas
 const Login = lazy(() => import("./components/Login"));
@@ -54,6 +55,10 @@ function App() {
                 {/* --- Rutas para Clientes --- */}
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/payments" element={<PaymentHistory />} />
+                <Route
+                  path="/payments/:invoiceId"
+                  element={<ClientInvoiceDetailView />}
+                />
                 <Route path="/profile" element={<Profile />} />
                 <Route
                   path="/services"

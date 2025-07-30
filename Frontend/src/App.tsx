@@ -11,7 +11,7 @@ import AdminRoutes from "./components/router/AdminRoutes";
 import InvoiceManagement from "./views/admin/InvoiceManagement";
 import InvoiceDetailView from "./views/admin/InvoiceDetailView";
 import ClientInvoiceDetailView from "./views/client/ClientInvoiceDetailView";
-
+import ClientEditView from "./views/admin/ClientEditView";
 // Vistas
 const Login = lazy(() => import("./components/Login"));
 const Dashboard = lazy(() => import("./views/Dashboard"));
@@ -70,6 +70,10 @@ function App() {
                   {/* Estas rutas se anidan DENTRO de /admin */}
                   <Route path="dashboard" element={<AdminDashboard />} />
                   <Route path="clients" element={<ClientManagement />} />
+                  <Route
+                    path="clients/:dni/edit"
+                    element={<ClientEditView />}
+                  />
                   <Route path="invoices" element={<InvoiceManagement />} />
                   <Route
                     path="invoices/:invoiceId"

@@ -1,4 +1,4 @@
-// src/views/admin/InvoiceManagement.tsx
+// src/views/admin/ClientManagement.tsx
 import { useState, useEffect, useContext } from "react";
 import {
   Box,
@@ -8,97 +8,186 @@ import {
   Alert,
   AlertIcon,
   HStack,
-  Text,
-  Badge,
-  Table,
-  Thead,
-  Tbody,
-  Tr,
-  Th,
-  Td,
-  TableContainer,
-  Select,
   Button,
+  useToast,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalCloseButton,
+  useDisclosure,
+  FormControl,
+  FormLabel,
+  Input,
 } from "@chakra-ui/react";
 import { AuthContext } from "../../context/AuthContext";
-import { Pagination } from "../../components/payments/Pagination"; // Reutilizamos la paginación
-import { useNavigate } from "react-router-dom"; // <-- IMPORTADO
+import { ClientList } from "../../components/admin/ClientList";
+import { ClientSearch } from "../../components/admin/ClientSearch";
+import { Pagination } from "../../components/payments/Pagination";
 
-// Tipos de datos que esperamos del backend
-type InvoiceStatus = "pending" | "paid" | "overdue" | "in_review";
-
-type Invoice = {
-  id: number;
-  issue_date: string;
-  due_date: string;
-  total_amount: number;
-  status: InvoiceStatus;
-  user: {
-    // Asumimos que el backend puede incluir info básica del usuario
-    username: string;
-    firstname: string;
-    lastname: string;
-  };
+export type User = {
+  username: string;
+  email: string;
+  dni: number;
+  firstname: string;
+  lastname: string;
+  address: string | null;
+  barrio: string | null;
+  city: string | null;
+  phone: string | null;
+  phone2: string | null;
+  role: string;
 };
 
-// Componente para el badge de estado
-const StatusBadge = ({ status }: { status: InvoiceStatus }) => {
-  const statusConfig = {
-    paid: { s: "green", t: "Pagada" },
-    overdue: { s: "red", t: "Vencida" },
-    in_review: { s: "cyan", t: "En Verificación" },
-    pending: { s: "yellow", t: "Pendiente" },
-  };
-  const config = statusConfig[status] || statusConfig.pending;
-  return <Badge colorScheme={config.s}>{config.t}</Badge>;
+type NewUserData = {
+  username: string;
+  email: string;
+  password: string;
+  dni: number;
+  firstname: string;
+  lastname: string;
+  address: string;
+  barrio: string;
+  city: string;
+  phone: string;
+  phone2: string;
 };
 
-function InvoiceManagement() {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+function ClientManagement() {
+  const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [filterStatus, setFilterStatus] = useState<InvoiceStatus | "">("");
+  const [searchTerm, setSearchTerm] = useState("");
   const { token } = useContext(AuthContext);
-  const navigate = useNavigate(); // <-- INICIALIZADO
+  const toast = useToast();
+  const { isOpen, onOpen, onClose } = useDisclosure();
+
+  // Estado para el formulario de nuevo cliente
+  const [newUser, setNewUser] = useState<NewUserData>({
+    username: "",
+    email: "",
+    password: "",
+    dni: 0,
+    firstname: "",
+    lastname: "",
+    address: "",
+    barrio: "",
+    city: "",
+    phone: "",
+    phone2: "",
+  });
+
+  const fetchUsers = async () => {
+    setIsLoading(true);
+    let url = `http://localhost:8000/api/admin/users/all?page=${currentPage}&size=10`;
+    if (searchTerm) {
+      url += `&username=${searchTerm}`;
+    }
+
+    try {
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.detail || "No se pudieron cargar los usuarios."
+        );
+      }
+      const data = await response.json();
+      setUsers(data.items);
+      setTotalPages(data.total_pages);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchInvoices = async () => {
-      setIsLoading(true);
-      // Nota: Necesitarás crear este endpoint en tu backend
-      let url = `http://localhost:8000/api/admin/invoices/all?page=${currentPage}&size=10`;
-      if (filterStatus) {
-        url += `&status=${filterStatus}`;
-      }
-
-      try {
-        const response = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(
-            errorData.detail || "No se pudieron cargar las facturas."
-          );
-        }
-        const data = await response.json();
-        setInvoices(data.items);
-        setTotalPages(data.total_pages);
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setIsLoading(false);
-      }
-    };
     if (token) {
-      fetchInvoices();
+      fetchUsers();
     }
-  }, [currentPage, filterStatus, token]);
+  }, [currentPage, searchTerm, token]);
 
-  const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setCurrentPage(1); // Reinicia a la página 1 al cambiar el filtro
-    setFilterStatus(e.target.value as InvoiceStatus | "");
+  const handleSearch = (term: string) => {
+    setCurrentPage(1);
+    setSearchTerm(term);
+  };
+
+  const handleAddUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (
+      !newUser.username ||
+      !newUser.email ||
+      !newUser.password ||
+      !newUser.dni
+    ) {
+      toast({
+        title: "Error",
+        description: "Los campos marcados como requeridos son obligatorios.",
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        "http://localhost:8000/api/admin/users/add",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(newUser),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Error al crear el usuario.");
+      }
+
+      toast({
+        title: "Cliente agregado",
+        description: "El nuevo cliente ha sido creado exitosamente.",
+        status: "success",
+        duration: 5000,
+        isClosable: true,
+      });
+
+      // Resetear formulario y cerrar modal
+      setNewUser({
+        username: "",
+        email: "",
+        password: "",
+        dni: 0,
+        firstname: "",
+        lastname: "",
+        address: "",
+        barrio: "",
+        city: "",
+        phone: "",
+        phone2: "",
+      });
+      onClose();
+      fetchUsers(); // Recargar la lista
+    } catch (err: any) {
+      toast({
+        title: "Error",
+        description: err.message,
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
+    }
   };
 
   const renderContent = () => {
@@ -115,59 +204,8 @@ function InvoiceManagement() {
           {error}
         </Alert>
       );
-    if (invoices.length === 0)
-      return (
-        <Box bg="gray.700" p={6} borderRadius="md" textAlign="center">
-          <Text color="gray.400">No se encontraron facturas.</Text>
-        </Box>
-      );
 
-    return (
-      <TableContainer bg="gray.700" borderRadius="md">
-        <Table variant="simple">
-          <Thead>
-            <Tr>
-              <Th color="white">ID</Th>
-              <Th color="white">Cliente</Th>
-              <Th color="white">Fecha Emisión</Th>
-              <Th color="white">Vencimiento</Th>
-              <Th isNumeric color="white">
-                Monto
-              </Th>
-              <Th color="white">Estado</Th>
-              <Th color="white">Acciones</Th>
-            </Tr>
-          </Thead>
-          <Tbody>
-            {invoices.map((invoice) => (
-              <Tr key={invoice.id}>
-                <Td>#{invoice.id}</Td>
-                <Td>
-                  {invoice.user.firstname} {invoice.user.lastname}
-                </Td>
-                <Td>{new Date(invoice.issue_date).toLocaleDateString()}</Td>
-                <Td>{new Date(invoice.due_date).toLocaleDateString()}</Td>
-                <Td isNumeric>${invoice.total_amount.toFixed(2)}</Td>
-                <Td>
-                  <StatusBadge status={invoice.status} />
-                </Td>
-                <Td>
-                  {/* --- INICIO DE LA CORRECCIÓN --- */}
-                  <Button
-                    size="sm"
-                    colorScheme="blue"
-                    onClick={() => navigate(`/admin/invoices/${invoice.id}`)}
-                  >
-                    Ver
-                  </Button>
-                  {/* --- FIN DE LA CORRECCIÓN --- */}
-                </Td>
-              </Tr>
-            ))}
-          </Tbody>
-        </Table>
-      </TableContainer>
-    );
+    return <ClientList users={users} />;
   };
 
   return (
@@ -179,22 +217,18 @@ function InvoiceManagement() {
     >
       <VStack spacing={6} align="stretch" maxW="1200px" mx="auto">
         <Heading as="h1" size="xl">
-          Gestionar Facturas
+          Gestión de Clientes
         </Heading>
-        <HStack>
-          <Select
-            placeholder="Filtrar por estado"
-            bg="gray.700"
-            onChange={handleFilterChange}
-            value={filterStatus}
-          >
-            <option value="pending">Pendientes</option>
-            <option value="paid">Pagadas</option>
-            <option value="overdue">Vencidas</option>
-            <option value="in_review">En Verificación</option>
-          </Select>
+
+        <HStack justify="space-between" wrap="wrap" gap={4}>
+          <ClientSearch onSearch={handleSearch} />
+          <Button colorScheme="teal" onClick={onOpen}>
+            Nuevo Cliente
+          </Button>
         </HStack>
+
         {renderContent()}
+
         <Pagination
           currentPage={currentPage}
           totalPages={totalPages}
@@ -202,8 +236,151 @@ function InvoiceManagement() {
           isLoading={isLoading}
         />
       </VStack>
+
+      {/* Modal para agregar nuevo cliente */}
+      <Modal isOpen={isOpen} onClose={onClose} size="xl">
+        <ModalOverlay />
+        <ModalContent bg="gray.700" color="white">
+          <ModalHeader>Agregar Nuevo Cliente</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody pb={6}>
+            <Box as="form" onSubmit={handleAddUser}>
+              <VStack spacing={4}>
+                <HStack spacing={4} w="100%">
+                  <FormControl isRequired>
+                    <FormLabel>Nombre de Usuario</FormLabel>
+                    <Input
+                      value={newUser.username}
+                      onChange={(e) =>
+                        setNewUser({ ...newUser, username: e.target.value })
+                      }
+                    />
+                  </FormControl>
+                  <FormControl isRequired>
+                    <FormLabel>DNI</FormLabel>
+                    <Input
+                      type="number"
+                      value={newUser.dni || ""}
+                      onChange={(e) =>
+                        setNewUser({
+                          ...newUser,
+                          dni: parseInt(e.target.value) || 0,
+                        })
+                      }
+                    />
+                  </FormControl>
+                </HStack>
+
+                <HStack spacing={4} w="100%">
+                  <FormControl isRequired>
+                    <FormLabel>Nombre</FormLabel>
+                    <Input
+                      value={newUser.firstname}
+                      onChange={(e) =>
+                        setNewUser({ ...newUser, firstname: e.target.value })
+                      }
+                    />
+                  </FormControl>
+                  <FormControl isRequired>
+                    <FormLabel>Apellido</FormLabel>
+                    <Input
+                      value={newUser.lastname}
+                      onChange={(e) =>
+                        setNewUser({ ...newUser, lastname: e.target.value })
+                      }
+                    />
+                  </FormControl>
+                </HStack>
+
+                <FormControl isRequired>
+                  <FormLabel>Email</FormLabel>
+                  <Input
+                    type="email"
+                    value={newUser.email}
+                    onChange={(e) =>
+                      setNewUser({ ...newUser, email: e.target.value })
+                    }
+                  />
+                </FormControl>
+
+                <FormControl isRequired>
+                  <FormLabel>Contraseña</FormLabel>
+                  <Input
+                    type="password"
+                    value={newUser.password}
+                    onChange={(e) =>
+                      setNewUser({ ...newUser, password: e.target.value })
+                    }
+                  />
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel>Dirección</FormLabel>
+                  <Input
+                    value={newUser.address}
+                    onChange={(e) =>
+                      setNewUser({ ...newUser, address: e.target.value })
+                    }
+                  />
+                </FormControl>
+
+                <HStack spacing={4} w="100%">
+                  <FormControl>
+                    <FormLabel>Barrio</FormLabel>
+                    <Input
+                      value={newUser.barrio}
+                      onChange={(e) =>
+                        setNewUser({ ...newUser, barrio: e.target.value })
+                      }
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel>Ciudad</FormLabel>
+                    <Input
+                      value={newUser.city}
+                      onChange={(e) =>
+                        setNewUser({ ...newUser, city: e.target.value })
+                      }
+                    />
+                  </FormControl>
+                </HStack>
+
+                <HStack spacing={4} w="100%">
+                  <FormControl>
+                    <FormLabel>Teléfono Principal</FormLabel>
+                    <Input
+                      value={newUser.phone}
+                      onChange={(e) =>
+                        setNewUser({ ...newUser, phone: e.target.value })
+                      }
+                    />
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel>Teléfono Secundario</FormLabel>
+                    <Input
+                      value={newUser.phone2}
+                      onChange={(e) =>
+                        setNewUser({ ...newUser, phone2: e.target.value })
+                      }
+                    />
+                  </FormControl>
+                </HStack>
+
+                <HStack spacing={4} w="100%" pt={4}>
+                  <Button colorScheme="gray" onClick={onClose} flex={1}>
+                    Cancelar
+                  </Button>
+                  <Button colorScheme="teal" type="submit" flex={1}>
+                    Crear Cliente
+                  </Button>
+                </HStack>
+              </VStack>
+            </Box>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
     </Box>
   );
 }
 
-export default InvoiceManagement;
+export default ClientManagement;

@@ -42,12 +42,10 @@ export const InvoiceFilter = ({ onFilterChange }: InvoiceFilterProps) => {
       spacing={3}
       w={{ base: "100%", md: "auto" }}
     >
-      {/* --- INICIO DE LA CORRECCIÓN CLAVE --- */}
       <Select
         value={month}
         onChange={(e) => setMonth(e.target.value)}
         bg="gray.700"
-        // Cambiamos el color del texto del placeholder para que coincida
         color={month ? "white" : "gray.400"}
       >
         <option value="" style={optionStyle}>
@@ -74,7 +72,6 @@ export const InvoiceFilter = ({ onFilterChange }: InvoiceFilterProps) => {
           </option>
         ))}
       </Select>
-      {/* --- FIN DE LA CORRECCIÓN CLAVE --- */}
       <Button type="submit" colorScheme="teal">
         Buscar
       </Button>

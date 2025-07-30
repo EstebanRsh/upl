@@ -22,7 +22,7 @@ import {
 } from "@chakra-ui/react";
 import { AuthContext } from "../../context/AuthContext";
 import { Pagination } from "../../components/payments/Pagination"; // Reutilizamos la paginación
-
+import { useNavigate } from "react-router-dom";
 // Tipos de datos que esperamos del backend
 type InvoiceStatus = "pending" | "paid" | "overdue" | "in_review";
 
@@ -60,6 +60,7 @@ function InvoiceManagement() {
   const [totalPages, setTotalPages] = useState(1);
   const [filterStatus, setFilterStatus] = useState<InvoiceStatus | "">("");
   const { token } = useContext(AuthContext);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchInvoices = async () => {
@@ -150,8 +151,11 @@ function InvoiceManagement() {
                   <StatusBadge status={invoice.status} />
                 </Td>
                 <Td>
-                  {/* Aquí irían los botones de acción */}
-                  <Button size="sm" colorScheme="blue" isDisabled>
+                  <Button
+                    size="sm"
+                    colorScheme="blue"
+                    onClick={() => navigate(`/admin/invoices/${invoice.id}`)}
+                  >
                     Ver
                   </Button>
                 </Td>

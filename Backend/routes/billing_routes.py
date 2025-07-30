@@ -287,3 +287,67 @@ def get_my_invoices(
         current_page=page,
         items=invoices,
     )
+
+
+@billing_router.get(
+    "/admin/invoices/{invoice_id}",
+    response_model=InvoiceAdminOut,
+    dependencies=[Depends(verify_admin_permission)],
+    tags=["Admin"],
+)
+def get_invoice_by_id_for_admin(invoice_id: int, db: Session = Depends(get_db)):
+    """Obtiene una factura específica por su ID para el panel de admin."""
+    invoice = (
+        db.query(Invoice)
+        .options(joinedload(Invoice.user).joinedload(User.userdetail))
+        .filter(Invoice.id == invoice_id)
+        .first()
+    )
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Factura no encontrada.")
+
+    # Es importante construir la respuesta manualmente para que coincida con el schema
+    if invoice.user and invoice.user.userdetail:
+        return InvoiceAdminOut(
+            id=invoice.id,
+            issue_date=invoice.issue_date,
+            due_date=invoice.due_date,
+            base_amount=invoice.base_amount,
+            late_fee=invoice.late_fee,
+            total_amount=invoice.total_amount,
+            status=invoice.status,
+            receipt_pdf_url=invoice.receipt_pdf_url,
+            user={
+                "username": invoice.user.username,
+                "firstname": invoice.user.userdetail.firstname,
+                "lastname": invoice.user.userdetail.lastname,
+            },
+        )
+    raise HTTPException(
+        status_code=500, detail="Error de datos internos del usuario de la factura."
+    )
+
+
+@billing_router.put(
+    "/admin/invoices/{invoice_id}/status",
+    response_model=InvoiceAdminOut,
+    dependencies=[Depends(verify_admin_permission)],
+    tags=["Admin"],
+)
+def update_invoice_status(
+    invoice_id: int,
+    update_data: UpdateInvoiceStatus,
+    db: Session = Depends(get_db),
+):
+    """Actualiza el estado de una factura (ej. 'pending' -> 'paid')."""
+    invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Factura no encontrada.")
+
+    # Aquí podrías añadir lógica extra, como verificar que el estado es válido
+    invoice.status = update_data.status
+    db.commit()
+    db.refresh(invoice)
+
+    # Devolvemos la factura actualizada para que el frontend pueda refrescar los datos
+    return get_invoice_by_id_for_admin(invoice_id=invoice_id, db=db)

@@ -150,7 +150,7 @@ export const InvoiceDetail = ({
             <Button
               colorScheme="blue"
               as="a"
-              href={`http://localhost:8000/${invoice.receipt_pdf_url}`}
+              href={`http://localhost:8000/facturas/${invoice.receipt_pdf_url}`}
               target="_blank"
             >
               Ver Recibo

@@ -16,9 +16,11 @@ function InvoiceDetailView() {
   const navigate = useNavigate();
   const toast = useToast();
 
+  // --- INICIO DE LA CORRECCIÓN ---
+  // La función ahora apunta al endpoint de una sola factura
   const fetchInvoice = async () => {
     if (!token || !invoiceId) return;
-    const url = `http://localhost:8000/api/admin/invoices/${invoiceId}`;
+    const url = `http://localhost:8000/api/admin/invoices/${invoiceId}`; // URL corregida
     try {
       setIsLoading(true);
       setError(null);
@@ -37,6 +39,7 @@ function InvoiceDetailView() {
       setIsLoading(false);
     }
   };
+  // --- FIN DE LA CORRECCIÓN ---
 
   useEffect(() => {
     fetchInvoice();
@@ -48,19 +51,19 @@ function InvoiceDetailView() {
     try {
       setIsUpdating(true);
       const response = await fetch(url, {
-        method: 'PUT',
+        method: "PUT",
         headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ status: newStatus })
+        body: JSON.stringify({ status: newStatus }),
       });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.detail || "No se pudo actualizar el estado.");
       }
       const updatedInvoice = await response.json();
-      setInvoice(updatedInvoice);
+      setInvoice(updatedInvoice); // Actualizamos el estado con la factura que devuelve la API
       toast({
         title: "Estado actualizado.",
         description: `La factura #${invoiceId} ha sido marcada como '${newStatus}'.`,
@@ -69,16 +72,31 @@ function InvoiceDetailView() {
         isClosable: true,
       });
     } catch (err: any) {
-      toast({ title: "Error", description: err.message, status: "error", duration: 5000, isClosable: true });
+      toast({
+        title: "Error",
+        description: err.message,
+        status: "error",
+        duration: 5000,
+        isClosable: true,
+      });
     } finally {
       setIsUpdating(false);
     }
   };
 
   return (
-    <Box p={{ base: 4, md: 8 }} bg="gray.800" color="white" minH="calc(100vh - 4rem)">
+    <Box
+      p={{ base: 4, md: 8 }}
+      bg="gray.800"
+      color="white"
+      minH="calc(100vh - 4rem)"
+    >
       <VStack spacing={6} align="stretch" maxW="1200px" mx="auto">
-        <Button onClick={() => navigate("/admin/invoices")} alignSelf="flex-start" mb={4}>
+        <Button
+          onClick={() => navigate("/admin/invoices")}
+          alignSelf="flex-start"
+          mb={4}
+        >
           Volver a la lista
         </Button>
         <InvoiceDetail

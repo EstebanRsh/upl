@@ -7,6 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
 from fastapi.responses import FileResponse
 from sqlalchemy import extract
+from fastapi import UploadFile, File
 from sqlalchemy.orm import Session, joinedload
 
 # Modelos de la DB
@@ -377,3 +378,45 @@ def get_my_invoice_by_id(
         raise HTTPException(status_code=404, detail="Factura no encontrada")
 
     return invoice
+
+
+@billing_router.post(
+    "/users/me/invoices/{invoice_id}/upload-receipt",
+    summary="Subir comprobante de pago del cliente",
+    tags=["Cliente"],
+)
+def upload_user_receipt(
+    invoice_id: int,
+    file: UploadFile = File(...),
+    authorization: str = Header(...),
+    db: Session = Depends(get_db),
+):
+    token_data = Security.verify_token({"authorization": authorization})
+    if not token_data.get("success"):
+        raise HTTPException(status_code=401, detail=token_data.get("message"))
+
+    user_id = token_data.get("user_id")
+
+    invoice = db.query(Invoice).filter_by(id=invoice_id, user_id=user_id).first()
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Factura no encontrada.")
+
+    if not file.filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Solo se permiten archivos PDF.")
+
+    # Ruta para guardar el archivo
+    now = datetime.datetime.now()
+    folder = f"facturas/{now.year}/{now.month:02d}"
+    os.makedirs(folder, exist_ok=True)
+
+    filename = f"{now.date()}_F{invoice.id}_U{user_id}.pdf"
+    filepath = os.path.join(folder, filename)
+
+    with open(filepath, "wb") as f:
+        f.write(file.file.read())
+
+    # Guardamos la ruta en la factura
+    invoice.user_receipt_url = filepath
+    db.commit()
+
+    return {"message": "Comprobante subido correctamente.", "path": filepath}

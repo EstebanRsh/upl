@@ -57,7 +57,7 @@ export const getUsersWithInvoices = async (token: string): Promise<UserDetail[]>
 };
 
 export const deleteUser = async (userId: number, token: string): Promise<void> => {
-  await axios.delete(`${API_BASE_URL}/users/${userId}`, {
+  await axios.delete(`http://localhost:8000/api/admin/users/${userId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 };

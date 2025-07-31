@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr
 class UserOut(BaseModel):
     """Schema de respuesta para un usuario, no incluye la contraseña."""
 
+    id: int
     username: str
     email: EmailStr
     dni: int

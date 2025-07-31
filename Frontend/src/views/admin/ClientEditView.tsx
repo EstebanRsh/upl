@@ -1,5 +1,5 @@
 // src/views/admin/ClientEditView.tsx
-import { useState, useEffect, useContext } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   Box,
@@ -11,302 +11,215 @@ import {
   FormLabel,
   Input,
   useToast,
-  Spinner,
-  Alert,
-  AlertIcon,
   Card,
   CardBody,
   CardHeader,
+  Spinner,
+  Alert,
+  AlertIcon,
 } from "@chakra-ui/react";
-import { AuthContext } from "../../context/AuthContext";
-
-type UserDetail = {
-  dni: number;
-  firstname: string;
-  lastname: string;
-  address: string | null;
-  barrio: string | null;
-  city: string | null;
-  phone: string | null;
-  phone2: string | null;
-};
+import { useAuth } from "../../context/AuthContext";
+import {
+  getUserById,
+  updateUserDetails,
+  UserDetail,
+} from "../../services/adminService";
 
 function ClientEditView() {
-  const { dni } = useParams<{ dni: string }>();
+  const { userId } = useParams<{ userId: string }>();
   const navigate = useNavigate();
-  const { token } = useContext(AuthContext);
+  const { token } = useAuth();
   const toast = useToast();
-
-  const [userDetail, setUserDetail] = useState<UserDetail>({
-    dni: 0,
-    firstname: "",
-    lastname: "",
-    address: "",
-    barrio: "",
-    city: "",
-    phone: "",
-    phone2: "",
-  });
-
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [user, setUser] = useState<UserDetail | null>(null);
 
-  // Buscar el usuario por DNI en la lista existente
   useEffect(() => {
-    const fetchUserByDni = async () => {
-      if (!dni || !token) return;
-
-      try {
-        setIsLoading(true);
-        // Buscar en la lista de usuarios por DNI
-        const response = await fetch(
-          `http://localhost:8000/api/admin/users/all?page=1&size=100`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.detail || "Error al cargar el usuario.");
-        }
-
-        const data = await response.json();
-        const user = data.items.find((u: any) => u.dni.toString() === dni);
-
-        if (!user) {
-          throw new Error("Usuario no encontrado.");
-        }
-
-        setUserDetail({
-          dni: user.dni,
-          firstname: user.firstname,
-          lastname: user.lastname,
-          address: user.address,
-          barrio: user.barrio,
-          city: user.city,
-          phone: user.phone,
-          phone2: user.phone2,
-        });
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
+    if (userId && token) {
+      // Convertimos el userId a número para la llamada a la API
+      const numericUserId = Number(userId);
+      if (isNaN(numericUserId)) {
+        setError("El ID del usuario en la URL no es válido.");
         setIsLoading(false);
+        return;
       }
-    };
 
-    fetchUserByDni();
-  }, [dni, token]);
+      getUserById(numericUserId, token)
+        .then((data) => setUser(data))
+        .catch((err) => {
+          // --- CORRECCIÓN AQUÍ ---
+          // Extraemos solo el mensaje de texto del error.
+          const errorMessage =
+            err.response?.data?.detail || "No se pudo cargar el cliente.";
+          setError(errorMessage);
+        })
+        .finally(() => setIsLoading(false));
+    }
+  }, [userId, token]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setUser((prev) => (prev ? { ...prev, [name]: value } : null));
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!token || !user || !user.id) return;
+
     setIsSaving(true);
-
     try {
-      // Necesitarías encontrar el user_id del usuario para hacer el update
-      // Por ahora usamos un endpoint hipotético
-      const response = await fetch(
-        `http://localhost:8000/api/admin/users/by-dni/${dni}/details`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(userDetail),
-        }
+      const { id, firstname, lastname, address, barrio, city, phone, phone2 } =
+        user;
+      await updateUserDetails(
+        id,
+        { firstname, lastname, address, barrio, city, phone, phone2 },
+        token
       );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || "Error al actualizar el usuario.");
-      }
-
-      toast({
-        title: "Usuario actualizado",
-        description:
-          "Los datos del cliente han sido actualizados exitosamente.",
-        status: "success",
-        duration: 5000,
-        isClosable: true,
-      });
-
+      toast({ title: "Cliente Actualizado", status: "success" });
       navigate("/admin/clients");
     } catch (err: any) {
+      const errorDescription =
+        err.response?.data?.detail || "Ocurrió un error.";
       toast({
-        title: "Error",
-        description: err.message,
+        title: "Error al actualizar",
+        description:
+          typeof errorDescription === "string"
+            ? errorDescription
+            : JSON.stringify(errorDescription),
         status: "error",
-        duration: 5000,
-        isClosable: true,
       });
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (isLoading) {
+  if (isLoading)
     return (
       <Box display="flex" justifyContent="center" py={10}>
         <Spinner size="xl" />
       </Box>
     );
-  }
 
-  if (error) {
+  // El error ahora es un string y se puede renderizar de forma segura
+  if (error)
     return (
-      <Box p={{ base: 4, md: 8 }}>
-        <Alert status="error">
-          <AlertIcon />
-          {error}
-        </Alert>
-      </Box>
+      <Alert status="error" mt={4}>
+        <AlertIcon />
+        {error}
+      </Alert>
     );
-  }
 
   return (
-    <Box
-      p={{ base: 4, md: 8 }}
-      bg="gray.800"
-      color="white"
-      minH="calc(100vh - 4rem)"
-    >
+    <Box p={{ base: 4, md: 8 }} bg="gray.800" color="white" minH="100vh">
       <VStack spacing={6} align="stretch" maxW="800px" mx="auto">
         <HStack justify="space-between">
           <Heading as="h1" size="xl">
             Editar Cliente
           </Heading>
-          <Button onClick={() => navigate("/admin/clients")}>
-            Volver a la lista
-          </Button>
+          <Button onClick={() => navigate("/admin/clients")}>Volver</Button>
         </HStack>
-
-        <Card bg="gray.700" color="white">
-          <CardHeader>
-            <Heading size="md">Información del Cliente</Heading>
-          </CardHeader>
-          <CardBody>
-            <Box as="form" onSubmit={handleSave}>
-              <VStack spacing={4}>
-                <HStack spacing={4} w="100%">
-                  <FormControl isRequired>
+        {user && (
+          <Card bg="gray.700" color="white">
+            <CardHeader>
+              <Heading size="md">Datos de @{user.username}</Heading>
+            </CardHeader>
+            <CardBody>
+              <Box as="form" onSubmit={handleSave}>
+                <VStack spacing={4}>
+                  <HStack w="100%">
+                    <FormControl isRequired>
+                      <FormLabel>Nombre</FormLabel>
+                      <Input
+                        name="firstname"
+                        value={user.firstname}
+                        onChange={handleInputChange}
+                      />
+                    </FormControl>
+                    <FormControl isRequired>
+                      <FormLabel>Apellido</FormLabel>
+                      <Input
+                        name="lastname"
+                        value={user.lastname}
+                        onChange={handleInputChange}
+                      />
+                    </FormControl>
+                  </HStack>
+                  <FormControl>
                     <FormLabel>DNI</FormLabel>
-                    <Input
-                      type="number"
-                      value={userDetail.dni || ""}
-                      onChange={(e) =>
-                        setUserDetail({
-                          ...userDetail,
-                          dni: parseInt(e.target.value) || 0,
-                        })
-                      }
-                      isDisabled // El DNI no debería cambiar
-                    />
+                    <Input value={user.dni} isReadOnly bg="gray.600" />
                   </FormControl>
-                </HStack>
-
-                <HStack spacing={4} w="100%">
-                  <FormControl isRequired>
-                    <FormLabel>Nombre</FormLabel>
-                    <Input
-                      value={userDetail.firstname}
-                      onChange={(e) =>
-                        setUserDetail({
-                          ...userDetail,
-                          firstname: e.target.value,
-                        })
-                      }
-                    />
-                  </FormControl>
-                  <FormControl isRequired>
-                    <FormLabel>Apellido</FormLabel>
-                    <Input
-                      value={userDetail.lastname}
-                      onChange={(e) =>
-                        setUserDetail({
-                          ...userDetail,
-                          lastname: e.target.value,
-                        })
-                      }
-                    />
-                  </FormControl>
-                </HStack>
-
-                <FormControl>
-                  <FormLabel>Dirección</FormLabel>
-                  <Input
-                    value={userDetail.address || ""}
-                    onChange={(e) =>
-                      setUserDetail({ ...userDetail, address: e.target.value })
-                    }
-                  />
-                </FormControl>
-
-                <HStack spacing={4} w="100%">
                   <FormControl>
-                    <FormLabel>Barrio</FormLabel>
+                    <FormLabel>Email</FormLabel>
                     <Input
-                      value={userDetail.barrio || ""}
-                      onChange={(e) =>
-                        setUserDetail({ ...userDetail, barrio: e.target.value })
-                      }
+                      type="email"
+                      readOnly
+                      value={user.email}
+                      bg="gray.600"
                     />
                   </FormControl>
                   <FormControl>
-                    <FormLabel>Ciudad</FormLabel>
+                    <FormLabel>Dirección</FormLabel>
                     <Input
-                      value={userDetail.city || ""}
-                      onChange={(e) =>
-                        setUserDetail({ ...userDetail, city: e.target.value })
-                      }
+                      name="address"
+                      value={user.address || ""}
+                      onChange={handleInputChange}
                     />
                   </FormControl>
-                </HStack>
-
-                <HStack spacing={4} w="100%">
-                  <FormControl>
-                    <FormLabel>Teléfono Principal</FormLabel>
-                    <Input
-                      value={userDetail.phone || ""}
-                      onChange={(e) =>
-                        setUserDetail({ ...userDetail, phone: e.target.value })
-                      }
-                    />
-                  </FormControl>
-                  <FormControl>
-                    <FormLabel>Teléfono Secundario</FormLabel>
-                    <Input
-                      value={userDetail.phone2 || ""}
-                      onChange={(e) =>
-                        setUserDetail({ ...userDetail, phone2: e.target.value })
-                      }
-                    />
-                  </FormControl>
-                </HStack>
-
-                <HStack spacing={4} w="100%" pt={4}>
-                  <Button
-                    colorScheme="gray"
-                    onClick={() => navigate("/admin/clients")}
-                    flex={1}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    colorScheme="teal"
-                    type="submit"
-                    flex={1}
-                    isLoading={isSaving}
-                    loadingText="Guardando..."
-                  >
-                    Guardar Cambios
-                  </Button>
-                </HStack>
-              </VStack>
-            </Box>
-          </CardBody>
-        </Card>
+                  <HStack w="100%">
+                    <FormControl>
+                      <FormLabel>Barrio</FormLabel>
+                      <Input
+                        name="barrio"
+                        value={user.barrio || ""}
+                        onChange={handleInputChange}
+                      />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>Ciudad</FormLabel>
+                      <Input
+                        name="city"
+                        value={user.city || ""}
+                        onChange={handleInputChange}
+                      />
+                    </FormControl>
+                  </HStack>
+                  <HStack w="100%">
+                    <FormControl>
+                      <FormLabel>Teléfono</FormLabel>
+                      <Input
+                        name="phone"
+                        value={user.phone || ""}
+                        onChange={handleInputChange}
+                      />
+                    </FormControl>
+                    <FormControl>
+                      <FormLabel>Teléfono 2</FormLabel>
+                      <Input
+                        name="phone2"
+                        value={user.phone2 || ""}
+                        onChange={handleInputChange}
+                      />
+                    </FormControl>
+                  </HStack>
+                  <HStack w="100%" pt={4}>
+                    <Button onClick={() => navigate("/admin/clients")} flex={1}>
+                      Cancelar
+                    </Button>
+                    <Button
+                      colorScheme="teal"
+                      type="submit"
+                      flex={1}
+                      isLoading={isSaving}
+                    >
+                      Guardar Cambios
+                    </Button>
+                  </HStack>
+                </VStack>
+              </Box>
+            </CardBody>
+          </Card>
+        )}
       </VStack>
     </Box>
   );

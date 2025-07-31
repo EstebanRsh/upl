@@ -61,7 +61,7 @@ export const ClientList = ({ users }: ClientListProps) => {
                 <Button
                   size="sm"
                   colorScheme="blue"
-                  onClick={() => navigate(`/admin/clients/${user.dni}/edit`)}
+                  onClick={() => navigate(`/admin/clients/${user.id}/edit`)}
                 >
                   Editar
                 </Button>

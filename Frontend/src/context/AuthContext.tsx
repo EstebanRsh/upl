@@ -5,13 +5,13 @@ import {
   useEffect,
   ReactNode,
   useCallback,
+  useContext,
 } from "react";
-import { jwtDecode, JwtPayload } from "jwt-decode"; // Usamos jwt-decode para verificar la expiración
+import { jwtDecode, JwtPayload } from "jwt-decode";
 
-// 1. Definimos la nueva estructura del objeto User
 export interface User {
   first_name: string;
-  role: "administrador" | "cliente"; // Roles simplificados
+  role: "administrador" | "cliente";
   username: string;
 }
 
@@ -23,7 +23,6 @@ interface AuthContextType {
   logout: () => void;
 }
 
-// Creamos el contexto con valores por defecto
 export const AuthContext = createContext<AuthContextType>({
   user: null,
   token: null,
@@ -32,7 +31,6 @@ export const AuthContext = createContext<AuthContextType>({
   logout: () => {},
 });
 
-// 2. Simplificamos el AuthProvider
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(() =>
@@ -40,7 +38,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   );
   const [loading, setLoading] = useState(true);
 
-  // La función de logout es más explícita
   const logout = useCallback(() => {
     setUser(null);
     setToken(null);
@@ -48,21 +45,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem("user");
   }, []);
 
-  // 3. El useEffect ahora es más robusto
   useEffect(() => {
     if (token) {
       try {
         const decodedToken = jwtDecode<JwtPayload>(token);
-        // Verificamos si el token ha expirado
         if (decodedToken.exp! * 1000 < Date.now()) {
           logout();
         } else {
-          // Si el token es válido, recuperamos los datos del usuario
           const storedUser = localStorage.getItem("user");
           if (storedUser) {
             setUser(JSON.parse(storedUser));
           } else {
-            // Si no hay datos de usuario, es un estado inconsistente, así que cerramos sesión
             logout();
           }
         }
@@ -74,7 +67,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setLoading(false);
   }, [token, logout]);
 
-  // 4. Creamos una función de login para ser llamada desde el componente Login
   const login = (newToken: string, newUser: User) => {
     localStorage.setItem("token", newToken);
     localStorage.setItem("user", JSON.stringify(newUser));
@@ -87,4 +79,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       {children}
     </AuthContext.Provider>
   );
+};
+
+// --- CORRECCIÓN DEFINITIVA AQUÍ ---
+// El hook ahora devuelve el contexto directamente, que es más simple y estándar.
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error("useAuth debe ser usado dentro de un AuthProvider");
+  }
+  return context; // Devuelve el contexto directamente
 };

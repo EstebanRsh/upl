@@ -26,6 +26,7 @@ const AdminDashboard = lazy(() => import("./views/admin/AdminDashboard"));
 const ClientManagement = lazy(() => import("./views/admin/ClientManagement"));
 // --- 1. AÑADIMOS LA NUEVA VISTA DE GESTIÓN DE PAGOS A LA CARGA PEREZOSA ---
 const PaymentManagement = lazy(() => import("./views/admin/PaymentManagement"));
+const PlanManagement = lazy(() => import("./views/admin/PlanManagement"));
 
 // Componente genérico para vistas en desarrollo
 const Placeholder = ({ title }: { title: string }) => (
@@ -90,7 +91,7 @@ function App() {
                     path="payments/register"
                     element={<RegisterPaymentView />}
                   />
-
+                  <Route path="plans" element={<PlanManagement />} />
                   <Route
                     path="settings"
                     element={<Placeholder title="Configuración" />}

@@ -66,6 +66,9 @@ export default function Navbar() {
               <ChakraLink as={RouterLink} to="/admin/payments">
                 Pagos
               </ChakraLink>
+              <ChakraLink as={RouterLink} to="/admin/plans">
+                Planes
+              </ChakraLink>
               <ChakraLink as={RouterLink} to="/admin/settings">
                 Configuración
               </ChakraLink>

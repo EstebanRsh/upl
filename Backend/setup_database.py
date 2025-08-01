@@ -9,170 +9,222 @@ from models.models import (
     InternetPlan,
     Subscription,
     Invoice,
-    InputPayment,
+    Payment,
     BusinessSettings,
 )
 from auth.security import Security
-from services.payment_service import process_new_payment
 import datetime
 
 # --- Configuración ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- DATOS INICIALES ---
+# --- DATOS INICIALES (sin cambios) ---
 COMPANY_SETTINGS = [
+    {"setting_name": "BUSINESS_NAME", "setting_value": "UPL Telecomunicaciones"},
+    {"setting_name": "BUSINESS_CUIT", "setting_value": "30-12345678-9"},
+    {"setting_name": "BUSINESS_ADDRESS", "setting_value": "Av. Siempreviva 742"},
+    {"setting_name": "BUSINESS_CITY", "setting_value": "Springfield"},
+    {"setting_name": "BUSINESS_PHONE", "setting_value": "11-5555-4444"},
+    {"setting_name": "payment_window_days", "setting_value": "15"},
+    {"setting_name": "late_fee_amount", "setting_value": "500"},
+    {"setting_name": "days_for_suspension", "setting_value": "30"},
+    {"setting_name": "auto_invoicing_enabled", "setting_value": "true"},
+]
+
+PLANS_DATA = [
+    {"name": "Fibra 50MB", "speed_mbps": 50, "price": 4500.00},
+    {"name": "Fibra 100MB", "speed_mbps": 100, "price": 6000.00},
+    {"name": "Fibra 300MB", "speed_mbps": 300, "price": 8500.00},
+]
+
+CLIENTS_DATA = [
     {
-        "setting_name": "BUSINESS_NAME",
-        "setting_value": "UPL Telecomunicaciones",
-        "description": "Nombre comercial de la empresa.",
+        "user": {
+            "username": "lmartinez",
+            "email": "lucia.martinez@example.com",
+            "password": "password123",
+        },
+        "detail": {
+            "dni": 28123456,
+            "firstname": "Lucía",
+            "lastname": "Martinez",
+            "address": "Calle Sol 45",
+            "city": "Villa Crespo",
+        },
+        "plan_name": "Fibra 100MB",
+        "scenario": "pagado",
     },
     {
-        "setting_name": "BUSINESS_CUIT",
-        "setting_value": "30-12345678-9",
-        "description": "CUIT de la empresa.",
+        "user": {
+            "username": "cgomez",
+            "email": "carlos.gomez@example.com",
+            "password": "password123",
+        },
+        "detail": {
+            "dni": 32789012,
+            "firstname": "Carlos",
+            "lastname": "Gomez",
+            "address": "Av. Luna 820",
+            "city": "Palermo",
+        },
+        "plan_name": "Fibra 50MB",
+        "scenario": "pendiente",
     },
     {
-        "setting_name": "BUSINESS_ADDRESS",
-        "setting_value": "Av. Siempreviva 742",
-        "description": "Dirección fiscal de la empresa.",
+        "user": {
+            "username": "asanchez",
+            "email": "ana.sanchez@example.com",
+            "password": "password123",
+        },
+        "detail": {
+            "dni": 35456789,
+            "firstname": "Ana",
+            "lastname": "Sanchez",
+            "address": "Jr. Estrella 112",
+            "city": "Caballito",
+        },
+        "plan_name": "Fibra 300MB",
+        "scenario": "vencido",
     },
     {
-        "setting_name": "BUSINESS_CITY",
-        "setting_value": "Springfield",
-        "description": "Ciudad de la empresa.",
-    },
-    {
-        "setting_name": "BUSINESS_PHONE",
-        "setting_value": "11-5555-4444",
-        "description": "Teléfono de contacto.",
-    },
-    {
-        "setting_name": "payment_window_days",
-        "setting_value": "15",
-        "description": "Días de plazo para el pago de facturas.",
-    },
-    {
-        "setting_name": "late_fee_amount",
-        "setting_value": "500",
-        "description": "Monto del recargo por pago fuera de término.",
-    },
-    {
-        "setting_name": "days_for_suspension",
-        "setting_value": "30",
-        "description": "Días tras el vencimiento para suspender el servicio.",
-    },
-    {
-        "setting_name": "auto_invoicing_enabled",
-        "setting_value": "true",
-        "description": "Habilita o deshabilita la facturación automática mensual.",
+        "user": {
+            "username": "mfernandez",
+            "email": "martin.fernandez@example.com",
+            "password": "password123",
+        },
+        "detail": {
+            "dni": 30112233,
+            "firstname": "Martín",
+            "lastname": "Fernandez",
+            "address": "Pje. Cometa 99",
+            "city": "Flores",
+        },
+        "plan_name": "Fibra 100MB",
+        "scenario": "pagado_transferencia",
     },
 ]
 
-PLAN_EJEMPLO = {"name": "Fibra 100MB", "speed_mbps": 100, "price": 5000.00}
 
+def create_admin_user(db: Session):
+    """Función para crear el usuario administrador, ahora interactiva."""
+    print("\n--- Creación del Usuario Administrador ---")
+    use_default = input(
+        "¿Deseas usar el administrador por defecto ('Admin', pass: 'adminpass')? (s/n): "
+    ).lower()
 
-# --- LÓGICA DEL SCRIPT ---
-def setup_database():
-    db: Session = SessionLocal()
-    try:
-        logger.info(
-            "--- Iniciando configuración de la base de datos (versión simplificada) ---"
-        )
-
-        logger.warning("Borrando todas las tablas existentes...")
-        Base.metadata.drop_all(bind=engine)
-        Base.metadata.create_all(bind=engine)
-        logger.info("Tablas recreadas exitosamente.")
-
-        # 1. Guardar la configuración de la empresa
-        for setting in COMPANY_SETTINGS:
-            db.add(BusinessSettings(**setting))
-        db.commit()
-        logger.info("Configuración de la empresa guardada.")
-
-        # 2. Crear el primer Superusuario (Administrador)
-        print("\n--- Creación del Usuario Administrador ---")
+    if use_default == "s":
+        username = "Admin"
+        email = "admin@upl.com"
+        password = "adminpass"
+        firstname = "Admin"
+        lastname = "UPL"
+        dni = "111111"
+        logger.info("Usando datos por defecto para el administrador.")
+    else:
         username = input("Nombre de usuario para el Administrador: ")
         email = input("Email del Administrador: ")
         password = getpass("Contraseña (mínimo 8 caracteres): ")
         if len(password) < 8:
             raise ValueError("La contraseña debe tener al menos 8 caracteres.")
-
         firstname = input("Nombre: ")
         lastname = input("Apellido: ")
         dni = input("DNI: ")
 
-        hashed_password = Security.get_password_hash(password)
+    hashed_password = Security.get_password_hash(password)
+    admin_detail = UserDetail(
+        dni=int(dni), firstname=firstname, lastname=lastname, type="administrador"
+    )
+    admin_user = User(username=username, password=hashed_password, email=email)
+    admin_user.userdetail = admin_detail
 
-        admin_detail = UserDetail(
-            dni=int(dni),
-            firstname=firstname,
-            lastname=lastname,
-            type="administrador",  # Asignación directa del rol
-        )
-        admin_user = User(username=username, password=hashed_password, email=email)
-        admin_user.userdetail = admin_detail
-        db.add(admin_user)
+    db.add(admin_user)
+    db.commit()
+    logger.info(f"¡Usuario Administrador '{username}' creado exitosamente!")
+
+
+def setup_database():
+    db: Session = SessionLocal()
+    try:
+        logger.info("--- Iniciando configuración de la base de datos ---")
+        Base.metadata.drop_all(bind=engine)
+        Base.metadata.create_all(bind=engine)
+        logger.info("Tablas recreadas exitosamente.")
+
+        for setting in COMPANY_SETTINGS:
+            db.add(BusinessSettings(**setting))
         db.commit()
-        logger.info(f"¡Usuario Administrador '{username}' creado exitosamente!")
+        logger.info("Configuración de la empresa guardada.")
 
-        # 3. Crear datos de ejemplo (1 cliente con 1 factura pagada)
-        logger.info("Creando datos de ejemplo (cliente, plan, factura y pago)...")
-        plan = InternetPlan(**PLAN_EJEMPLO)
-        cliente_detail = UserDetail(
-            dni=12345678,
-            firstname="Juan",
-            lastname="Perez",
-            type="cliente",  # Asignación directa del rol
-            address="Calle Falsa 123",
-            barrio="Centro",
-            city="Ciudad Ejemplo",
-        )
-        cliente_user = User(
-            username="juanperez",
-            password=Security.get_password_hash("password123"),
-            email="juan.perez@cliente.com",
-        )
-        cliente_user.userdetail = cliente_detail
-        db.add(plan)
-        db.add(cliente_user)
-        db.commit()
+        # --- CORRECCIÓN: Llamamos a la función interactiva ---
+        create_admin_user(db)
 
-        subscription = Subscription(user_id=cliente_user.id, plan_id=plan.id)
-        db.add(subscription)
+        logger.info("Creando planes de internet...")
+        plans = {
+            plan_data["name"]: InternetPlan(**plan_data) for plan_data in PLANS_DATA
+        }
+        db.add_all(plans.values())
         db.commit()
 
-        invoice = Invoice(
-            user_id=cliente_user.id,
-            subscription_id=subscription.id,
-            due_date=datetime.date.today() + datetime.timedelta(days=15),
-            base_amount=plan.price,
-            total_amount=plan.price,
-        )
-        db.add(invoice)
-        db.commit()
-
-        # Simular un pago para la factura creada
-        payment_input = InputPayment(
-            user_id=cliente_user.id, plan_id=plan.id, amount=plan.price
-        )
-        # Asumiendo que process_new_payment puede ser llamado aquí
-        # Si da error, puede que necesite ser adaptado o llamado de otra forma
-        try:
-            process_new_payment(payment_input, db)
-            db.commit()
-            logger.info(
-                "Cliente de ejemplo 'juanperez' (pass: password123) creado con una factura pagada."
+        logger.info("Creando datos de clientes y facturación de ejemplo...")
+        today = datetime.date.today()
+        for client_data in CLIENTS_DATA:
+            user_info = client_data["user"]
+            detail_info = client_data["detail"]
+            user_pass = Security.get_password_hash(user_info["password"])
+            user_detail = UserDetail(**detail_info, type="cliente")
+            new_user = User(
+                username=user_info["username"],
+                password=user_pass,
+                email=user_info["email"],
             )
-        except Exception as payment_error:
-            logger.error(f"No se pudo procesar el pago de ejemplo: {payment_error}")
-            db.rollback()
+            new_user.userdetail = user_detail
+            db.add(new_user)
+            db.commit()
 
-        logger.info("\n--- ¡Configuración completada! La base de datos está lista. ---")
+            plan = plans[client_data["plan_name"]]
+            subscription = Subscription(user_id=new_user.id, plan_id=plan.id)
+            db.add(subscription)
+            db.commit()
+
+            due_date = today + datetime.timedelta(days=15)
+            if client_data["scenario"] == "vencido":
+                due_date = today - datetime.timedelta(days=5)
+
+            invoice = Invoice(
+                user_id=new_user.id,
+                subscription_id=subscription.id,
+                due_date=due_date,
+                base_amount=plan.price,
+                total_amount=plan.price,
+            )
+            if "pagado" in client_data["scenario"]:
+                invoice.status = "Pagado"
+
+            db.add(invoice)
+            db.commit()
+
+            if "pagado" in client_data["scenario"]:
+                payment_method = (
+                    "Transferencia"
+                    if client_data["scenario"] == "pagado_transferencia"
+                    else "Efectivo"
+                )
+                payment = Payment(
+                    user_id=new_user.id, amount=plan.price, invoice_id=invoice.id
+                )
+                payment.payment_method = payment_method
+                payment.payment_date = datetime.datetime.now() - datetime.timedelta(
+                    days=3
+                )
+                db.add(payment)
+                db.commit()
+
+        logger.info(f"{len(CLIENTS_DATA)} clientes de ejemplo creados.")
+        logger.info("\n--- ¡Configuración completada! ---")
 
     except Exception as e:
-        logger.error(f"Ocurrió un error durante la configuración: {e}", exc_info=True)
+        logger.error(f"Ocurrió un error: {e}", exc_info=True)
         db.rollback()
     finally:
         db.close()
@@ -180,7 +232,7 @@ def setup_database():
 
 if __name__ == "__main__":
     respuesta = input(
-        "ADVERTENCIA: Este script borrará TODOS los datos y configurará la BD desde cero. ¿Estás seguro? (s/n): "
+        "ADVERTENCIA: Esto borrará TODOS los datos. ¿Estás seguro? (s/n): "
     )
     if respuesta.lower() == "s":
         setup_database()

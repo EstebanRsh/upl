@@ -2,24 +2,30 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Box, Spinner, Heading, Text } from "@chakra-ui/react";
-import { AuthProvider } from "./context/AuthContext"; // <-- 1. Importamos el AuthProvider
+import { AuthProvider } from "./context/AuthContext";
 
 // Layouts y Rutas
 import MainLayout from "./components/layouts/MainLayout";
 import ProtectedRoutes from "./components/router/ProtectedRoutes";
 import AdminRoutes from "./components/router/AdminRoutes";
+
+// Vistas que no son lazy-loaded (pueden serlo si prefieres)
 import InvoiceManagement from "./views/admin/InvoiceManagement";
 import InvoiceDetailView from "./views/admin/InvoiceDetailView";
 import ClientInvoiceDetailView from "./views/client/ClientInvoiceDetailView";
 import ClientEditView from "./views/admin/ClientEditView";
 import ClientAddView from "./views/admin/ClientAddView";
-// Vistas
+import RegisterPaymentView from "./views/admin/RegisterPaymentView";
+
+// Vistas con carga perezosa (lazy-loading)
 const Login = lazy(() => import("./components/Login"));
 const Dashboard = lazy(() => import("./views/Dashboard"));
 const PaymentHistory = lazy(() => import("./views/PaymentHistory"));
 const Profile = lazy(() => import("./views/Profile"));
 const AdminDashboard = lazy(() => import("./views/admin/AdminDashboard"));
 const ClientManagement = lazy(() => import("./views/admin/ClientManagement"));
+// --- 1. AÑADIMOS LA NUEVA VISTA DE GESTIÓN DE PAGOS A LA CARGA PEREZOSA ---
+const PaymentManagement = lazy(() => import("./views/admin/PaymentManagement"));
 
 // Componente genérico para vistas en desarrollo
 const Placeholder = ({ title }: { title: string }) => (
@@ -31,7 +37,6 @@ const Placeholder = ({ title }: { title: string }) => (
 
 function App() {
   return (
-    // 2. Envolvemos el BrowserRouter con AuthProvider
     <AuthProvider>
       <BrowserRouter>
         <Suspense
@@ -47,10 +52,8 @@ function App() {
           }
         >
           <Routes>
-            {/* Ruta pública para el login */}
             <Route path="/login" element={<Login />} />
 
-            {/* Aquí comienzan las rutas protegidas que requieren iniciar sesión */}
             <Route element={<ProtectedRoutes />}>
               <Route element={<MainLayout />}>
                 {/* --- Rutas para Clientes --- */}
@@ -68,7 +71,6 @@ function App() {
 
                 {/* --- Sección de Rutas para Admin --- */}
                 <Route path="/admin" element={<AdminRoutes />}>
-                  {/* Estas rutas se anidan DENTRO de /admin */}
                   <Route path="dashboard" element={<AdminDashboard />} />
                   <Route path="clients" element={<ClientManagement />} />
                   <Route path="clients/add" element={<ClientAddView />} />
@@ -81,18 +83,24 @@ function App() {
                     path="invoices/:invoiceId"
                     element={<InvoiceDetailView />}
                   />
+
+                  {/* --- 2. AÑADIMOS LAS RUTAS DE PAGOS DEL ADMIN AQUÍ --- */}
+                  <Route path="payments" element={<PaymentManagement />} />
+                  <Route
+                    path="payments/register"
+                    element={<RegisterPaymentView />}
+                  />
+
                   <Route
                     path="settings"
                     element={<Placeholder title="Configuración" />}
                   />
                 </Route>
 
-                {/* Redirección por defecto si se accede a la raíz "/" */}
                 <Route path="/" element={<Navigate to="/dashboard" />} />
               </Route>
             </Route>
 
-            {/* Redirección final si no coincide nada */}
             <Route path="*" element={<Navigate to="/login" />} />
           </Routes>
         </Suspense>

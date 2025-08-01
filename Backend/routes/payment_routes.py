@@ -2,66 +2,23 @@
 import logging
 import math
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
-from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, joinedload
 
-# --- INICIO DE LA CORRECCIÓN DE IMPORTACIONES ---
-from models.models import Payment, InputPayment, Invoice
+from models.models import Payment, Invoice
 from schemas.payment_schemas import PaymentOut
 from schemas.common_schemas import PaginatedResponse
-
-# --- FIN DE LA CORRECCIÓN DE IMPORTACIONES ---
-
 from auth.security import Security
 from config.db import get_db
-from services.payment_service import process_new_payment, PaymentException
 
 logger = logging.getLogger(__name__)
-payment_router = APIRouter()
-
-
-def verify_admin_permission(authorization: str = Header(...)):
-    """Verifica que el token en la cabecera pertenezca a un administrador."""
-    token_data = Security.verify_token({"authorization": authorization})
-    if not token_data.get("success") or token_data.get("role") != "administrador":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos de administrador para realizar esta acción.",
-        )
-    return token_data
-
-
-@payment_router.post(
-    "/admin/payments/add",
-    summary="Registrar un nuevo pago",
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(verify_admin_permission)],
-    tags=["Admin"],
-)
-def add_payment(payment_data: InputPayment, db: Session = Depends(get_db)):
-    logger.info(
-        f"Iniciando el registro de un pago para el usuario ID {payment_data.user_id}."
-    )
-    try:
-        result = process_new_payment(payment_data, db)
-        db.commit()
-        logger.info(
-            f"Pago para usuario ID {payment_data.user_id} procesado y confirmado."
-        )
-        return JSONResponse(status_code=status.HTTP_201_CREATED, content=result)
-    except PaymentException as e:
-        db.rollback()
-        raise HTTPException(status_code=e.status_code, detail=e.message)
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Error inesperado en la ruta add_payment: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Ocurrió un error interno.")
+# Cambiamos el prefijo para que todas las rutas aquí empiecen con /api/payments
+payment_router = APIRouter(prefix="/payments", tags=["Pagos"])
 
 
 @payment_router.get(
-    "/users/{user_id}/payments",
+    "/user/{user_id}",
     response_model=PaginatedResponse[PaymentOut],
-    tags=["Pagos"],
+    summary="Obtener los pagos de un usuario específico",
 )
 def get_user_payments(
     user_id: int,
@@ -70,6 +27,9 @@ def get_user_payments(
     size: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
+    """
+    Endpoint para que un administrador o el propio usuario puedan ver un historial de pagos.
+    """
     token_data = Security.verify_token({"authorization": authorization})
     if not token_data.get("success"):
         raise HTTPException(
@@ -79,6 +39,7 @@ def get_user_payments(
     requesting_user_id = token_data.get("user_id")
     requesting_user_role = token_data.get("role")
 
+    # Solo el admin o el propio usuario pueden ver los pagos
     if requesting_user_role != "administrador" and requesting_user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -90,6 +51,7 @@ def get_user_payments(
         .filter_by(user_id=user_id)
         .order_by(Payment.payment_date.desc())
     )
+
     total_items = query.count()
     payments = (
         query.options(joinedload(Payment.invoice).joinedload(Invoice.subscription))

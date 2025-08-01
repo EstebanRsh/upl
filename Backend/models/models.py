@@ -8,6 +8,7 @@ from config.db import Base
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float
 from sqlalchemy.orm import relationship
 import datetime
+from datetime import date
 from core.constants import (
     SUBSCRIPTION_STATUS_ACTIVE,
     INVOICE_STATUS_PENDING,
@@ -106,6 +107,7 @@ class Payment(Base):
     amount = Column(Float)
     payment_date = Column(DateTime, default=datetime.datetime.now())
     invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=True)
+    payment_method = Column(String(50), nullable=True)
     user = relationship("User", uselist=False, back_populates="payments")
     invoice = relationship("Invoice", back_populates="payments")
 
@@ -239,3 +241,11 @@ class UpdateMyDetails(BaseModel):
 class UpdateMyPassword(BaseModel):
     current_password: str
     new_password: str = Field(..., min_length=8)
+
+
+class InputPaymentAdmin(BaseModel):
+    invoice_id: int
+    amount: float
+    payment_date: date
+    payment_method: str  # "Efectivo" o "Transferencia"
+    receipt_url: str | None = None  # Para el comprobante de transferencia

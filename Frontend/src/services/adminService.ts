@@ -42,6 +42,16 @@ interface UpdateData {
     phone2: string | null;
 }
 
+export interface Subscription {
+  id: number;
+  subscription_date: string;
+  status: 'active' | 'suspended' | 'cancelled';
+  plan: { // El backend anida la información del plan
+    id: number;
+    name: string;
+    price: number;
+  }
+}
 // --- Funciones de Gestión de Clientes ---
 
 export const addUser = async (userData: NewUser, token: string): Promise<any> => {
@@ -129,5 +139,43 @@ export const searchUsers = async (query: string, token: string): Promise<UserDet
     headers: { Authorization: `Bearer ${token}` },
     params: { q: query },
   });
+  return response.data;
+};
+
+// --- Funciones de Gestión de subscripciones ---
+
+/**
+ * Obtiene todas las suscripciones de un cliente específico por su ID.
+ */
+export const getUserSubscriptions = async (userId: number, token: string): Promise<Subscription[]> => {
+  const response = await axios.get(`http://localhost:8000/api/users/${userId}/subscriptions`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return response.data;
+};
+
+/**
+ * Asigna un nuevo plan a un cliente.
+ */
+export const assignPlanToUser = async (userId: number, planId: number, token: string): Promise<any> => {
+  const response = await axios.post(`http://localhost:8000/api/admin/subscriptions/assign`, 
+    { user_id: userId, plan_id: planId }, 
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  return response.data;
+};
+
+/**
+ * Actualiza el estado de una suscripción (ej: 'active', 'suspended').
+ */
+export const updateSubscriptionStatus = async (subscriptionId: number, status: string, token: string): Promise<any> => {
+  const response = await axios.put(`http://localhost:8000/api/admin/subscriptions/${subscriptionId}/status`, 
+    { status }, 
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
   return response.data;
 };

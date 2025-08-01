@@ -2,6 +2,7 @@
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session, joinedload
+from pydantic import BaseModel
 
 # --- INICIO DE LA CORRECCIÓN DE IMPORTACIONES ---
 from models.models import Subscription, InputSubscription, User
@@ -14,6 +15,10 @@ from config.db import get_db
 
 logger = logging.getLogger(__name__)
 subscription_router = APIRouter()
+
+
+class SubscriptionStatusUpdate(BaseModel):
+    status: str
 
 
 def verify_admin_permission(authorization: str = Header(...)):
@@ -54,6 +59,43 @@ def assign_plan_to_user(sub_data: InputSubscription, db: Session = Depends(get_d
         db.rollback()
         logger.error(f"Error en assign_plan_to_user: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
+
+
+@subscription_router.put(
+    "/admin/subscriptions/{subscription_id}/status",
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(verify_admin_permission)],
+    tags=["Admin"],
+)
+def update_subscription_status(
+    subscription_id: int,
+    update_data: SubscriptionStatusUpdate,
+    db: Session = Depends(get_db),
+):
+    """
+    Actualiza el estado de una suscripción (ej: 'active', 'suspended', 'cancelled').
+    """
+    logger.info(
+        f"Cambiando estado de la suscripción ID {subscription_id} a '{update_data.status}'."
+    )
+
+    subscription = db.query(Subscription).filter_by(id=subscription_id).first()
+    if not subscription:
+        raise HTTPException(status_code=404, detail="Suscripción no encontrada.")
+
+    # Aquí podrías añadir validaciones para los estados si quisieras
+    valid_statuses = ["active", "suspended", "cancelled"]
+    if update_data.status not in valid_statuses:
+        raise HTTPException(
+            status_code=400, detail=f"Estado '{update_data.status}' no es válido."
+        )
+
+    subscription.status = update_data.status
+    db.commit()
+
+    return {
+        "message": f"El estado de la suscripción ha sido actualizado a '{update_data.status}'."
+    }
 
 
 @subscription_router.get("/users/{user_id}/subscriptions", tags=["Suscripciones"])

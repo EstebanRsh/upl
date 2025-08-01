@@ -18,64 +18,101 @@ import {
   Text,
   Select,
   SimpleGrid,
-  Icon,
 } from "@chakra-ui/react";
-import { FaFileUpload } from "react-icons/fa";
+import AsyncSelect from "react-select/async";
 import { useAuth } from "../../context/AuthContext";
 import {
   UserDetail,
   Invoice,
   getPendingInvoicesByUserId,
   registerManualPayment,
+  searchUsers,
 } from "../../services/adminService";
-import { ClientSearch } from "../../components/admin/ClientSearch"; // Reutilizamos el buscador
+
+// --- Componente para la "Tarjeta" de Cliente Seleccionado ---
+const SelectedClientCard = ({ user }: { user: UserDetail }) => (
+  <Box p={4} bg="gray.600" borderRadius="md" w="100%" mt={4}>
+    <Text fontWeight="bold" fontSize="lg">
+      {user.firstname} {user.lastname}
+    </Text>
+    <Text fontSize="sm" color="gray.300">
+      DNI: {user.dni}
+    </Text>
+    <Text fontSize="sm" color="gray.300">
+      {user.address || "Sin dirección"}, {user.city || "Sin ciudad"}
+    </Text>
+  </Box>
+);
 
 function RegisterPaymentView() {
   const navigate = useNavigate();
   const { token } = useAuth();
   const toast = useToast();
 
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingInvoices, setIsLoadingInvoices] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-
-  const [searchTerm, setSearchTerm] = useState("");
-  const [foundUsers, setFoundUsers] = useState<UserDetail[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserDetail | null>(null);
   const [pendingInvoices, setPendingInvoices] = useState<Invoice[]>([]);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
-
   const [paymentMethod, setPaymentMethod] = useState("Efectivo");
   const [paymentDate, setPaymentDate] = useState(
     new Date().toISOString().split("T")[0]
-  ); // Fecha de hoy por defecto
+  );
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [amount, setAmount] = useState(0);
 
-  // Efecto para buscar usuarios cuando el término de búsqueda cambia
-  useEffect(() => {
-    if (searchTerm.length < 3) {
-      setFoundUsers([]);
+  // Función que alimenta al buscador con sugerencias de clientes
+  const loadUserOptions = (
+    inputValue: string,
+    callback: (options: UserDetail[]) => void
+  ) => {
+    if (!token || inputValue.length < 3) {
+      callback([]);
       return;
     }
-    // Aquí iría la lógica para buscar usuarios (usando un endpoint que crearemos después si es necesario)
-    // Por ahora, lo simularemos o asumiremos que el admin conoce al usuario.
-  }, [searchTerm]);
+    searchUsers(inputValue, token)
+      .then((users) => callback(users))
+      .catch(() => callback([]));
+  };
 
-  // Efecto para buscar facturas pendientes cuando se selecciona un usuario
+  // Efecto que se dispara al seleccionar un cliente para buscar sus facturas
   useEffect(() => {
     if (selectedUser && token) {
-      setIsLoading(true);
+      setIsLoadingInvoices(true);
+      setPendingInvoices([]);
+      setSelectedInvoice(null);
       getPendingInvoicesByUserId(selectedUser.id, token)
-        .then((invoices) => setPendingInvoices(invoices))
+        .then((invoices) => {
+          setPendingInvoices(invoices);
+          if (invoices.length === 0) {
+            toast({
+              title: "Sin Deudas",
+              description: "Este cliente no tiene facturas pendientes.",
+              status: "info",
+              isClosable: true,
+            });
+          }
+        })
         .catch(() =>
           toast({
             title: "Error",
-            description: "No se pudieron cargar las facturas pendientes.",
+            description: "No se pudieron cargar las facturas.",
             status: "error",
+            isClosable: true,
           })
         )
-        .finally(() => setIsLoading(false));
+        .finally(() => setIsLoadingInvoices(false));
     }
   }, [selectedUser, token, toast]);
+
+  // Efecto para autocompletar el monto al seleccionar una factura
+  useEffect(() => {
+    if (selectedInvoice) {
+      setAmount(selectedInvoice.total_amount);
+    } else {
+      setAmount(0);
+    }
+  }, [selectedInvoice]);
 
   const handleSelectInvoice = (invoiceId: string) => {
     const invoice = pendingInvoices.find((inv) => inv.id === Number(invoiceId));
@@ -83,7 +120,7 @@ function RegisterPaymentView() {
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
+    if (e.target.files && e.target.files.length > 0) {
       setReceiptFile(e.target.files[0]);
     }
   };
@@ -92,38 +129,58 @@ function RegisterPaymentView() {
     e.preventDefault();
     if (!token || !selectedInvoice) {
       toast({
-        title: "Error",
-        description: "Debe seleccionar una factura.",
+        title: "Datos incompletos",
+        description: "Debes seleccionar un cliente y una factura.",
         status: "error",
       });
       return;
     }
-
     setIsSaving(true);
     const formData = new FormData();
     formData.append("invoice_id", String(selectedInvoice.id));
-    formData.append("amount", String(selectedInvoice.amount)); // Usamos el monto de la factura
+    formData.append("amount", String(amount));
     formData.append("payment_date", paymentDate);
     formData.append("payment_method", paymentMethod);
-    if (receiptFile) {
+    if (receiptFile && paymentMethod === "Transferencia") {
       formData.append("receipt_file", receiptFile);
     }
-
     try {
       await registerManualPayment(formData, token);
-      toast({ title: "Pago Registrado", status: "success" });
+      toast({
+        title: "Pago Registrado",
+        description: "El pago se ha guardado exitosamente.",
+        status: "success",
+      });
       navigate("/admin/payments");
     } catch (err: any) {
       const errorDescription =
         err.response?.data?.detail || "Ocurrió un error.";
       toast({
-        title: "Error al registrar el pago",
+        title: "Error al registrar",
         description: errorDescription,
         status: "error",
       });
     } finally {
       setIsSaving(false);
     }
+  };
+
+  // Estilos para que el buscador combine con el tema oscuro de Chakra UI
+  const selectStyles = {
+    control: (base: any) => ({
+      ...base,
+      backgroundColor: "#2D3748",
+      border: "1px solid #4A5568",
+      color: "white",
+    }),
+    menu: (base: any) => ({ ...base, backgroundColor: "#2D3748" }),
+    option: (base: any, state: { isFocused: any }) => ({
+      ...base,
+      backgroundColor: state.isFocused ? "#4A5568" : "#2D3748",
+      color: "white",
+    }),
+    singleValue: (base: any) => ({ ...base, color: "white" }),
+    input: (base: any) => ({ ...base, color: "white" }),
   };
 
   return (
@@ -133,104 +190,154 @@ function RegisterPaymentView() {
           <Heading as="h1" size="xl">
             Registrar Pago Manual
           </Heading>
-          <Button onClick={() => navigate("/admin/payments")}>Volver</Button>
+          <Button onClick={() => navigate("/admin/payments")}>
+            Volver al Historial
+          </Button>
         </HStack>
         <Card bg="gray.700" color="white">
           <CardHeader>
-            <Heading size="md">Datos del Pago</Heading>
+            <Heading size="md">Completa los Datos del Pago</Heading>
           </CardHeader>
-          <CardBody>
-            {/* Aquí podríamos poner el buscador de clientes en el futuro */}
-            {/* Por ahora seleccionamos una factura pendiente directamente */}
-            <Box as="form" onSubmit={handleSave}>
-              <VStack spacing={4}>
-                {/* Selector de Facturas (simplificado por ahora) */}
-                {/* Lo ideal sería buscar un cliente y luego mostrar sus facturas */}
-                <FormControl isRequired>
-                  <FormLabel>Factura Pendiente a Pagar</FormLabel>
-                  <Select
-                    placeholder="Seleccione una factura..."
-                    onChange={(e) => handleSelectInvoice(e.target.value)}
+          <CardBody as="form" onSubmit={handleSave}>
+            <VStack spacing={6}>
+              <FormControl isRequired>
+                <FormLabel fontWeight="bold" mb={2}>
+                  Paso 1: Buscar y Seleccionar Cliente
+                </FormLabel>
+                <AsyncSelect
+                  styles={selectStyles}
+                  loadOptions={loadUserOptions}
+                  onChange={(option) => setSelectedUser(option as UserDetail)}
+                  getOptionLabel={(user) =>
+                    `${user.firstname} ${user.lastname} (DNI: ${user.dni})`
+                  }
+                  getOptionValue={(user) => String(user.id)}
+                  placeholder="Escribe 3+ letras del nombre o DNI..."
+                  noOptionsMessage={() => "No se encontraron clientes"}
+                  loadingMessage={() => "Buscando..."}
+                />
+              </FormControl>
+
+              {selectedUser && <SelectedClientCard user={selectedUser} />}
+
+              {isLoadingInvoices && <Spinner my={4} />}
+
+              {selectedUser && !isLoadingInvoices && (
+                <VStack w="100%" spacing={4}>
+                  <FormControl
+                    isRequired
+                    isDisabled={pendingInvoices.length === 0}
                   >
-                    {/* Aquí necesitaríamos una lista de todas las facturas pendientes */}
-                    {/* Esto es una simplificación y lo mejoraremos */}
-                  </Select>
-                </FormControl>
+                    <FormLabel fontWeight="bold">
+                      Paso 2: Seleccionar Factura Pendiente
+                    </FormLabel>
+                    <Select
+                      placeholder={
+                        pendingInvoices.length === 0
+                          ? "Este cliente no tiene deudas"
+                          : "Elige una factura..."
+                      }
+                      onChange={(e) => handleSelectInvoice(e.target.value)}
+                      bg="gray.600"
+                    >
+                      {pendingInvoices.map((inv) => (
+                        <option
+                          key={inv.id}
+                          value={inv.id}
+                          style={{ backgroundColor: "#2D3748" }}
+                        >
+                          Factura #{inv.id} - ${inv.total_amount.toFixed(2)}{" "}
+                          (Vence: {new Date(inv.due_date).toLocaleDateString()})
+                        </option>
+                      ))}
+                    </Select>
+                  </FormControl>
 
-                {selectedInvoice && (
-                  <>
-                    <SimpleGrid columns={2} spacing={4} w="100%">
-                      <FormControl>
-                        <FormLabel>Monto a Pagar</FormLabel>
-                        <Input
-                          value={`$${selectedInvoice.amount.toFixed(2)}`}
-                          isReadOnly
+                  {selectedInvoice && (
+                    <VStack
+                      w="100%"
+                      spacing={4}
+                      pt={4}
+                      borderTop="1px solid"
+                      borderColor="gray.600"
+                    >
+                      <FormLabel fontWeight="bold" alignSelf="flex-start">
+                        Paso 3: Detallar el Pago
+                      </FormLabel>
+                      <SimpleGrid columns={2} spacing={4} w="100%">
+                        <FormControl isRequired>
+                          <FormLabel>Monto del Pago</FormLabel>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={amount}
+                            onChange={(e) => setAmount(Number(e.target.value))}
+                          />
+                        </FormControl>
+                        <FormControl isRequired>
+                          <FormLabel>Fecha de Pago</FormLabel>
+                          <Input
+                            type="date"
+                            value={paymentDate}
+                            onChange={(e) => setPaymentDate(e.target.value)}
+                          />
+                        </FormControl>
+                      </SimpleGrid>
+                      <FormControl isRequired>
+                        <FormLabel>Método de Pago</FormLabel>
+                        <Select
+                          value={paymentMethod}
+                          onChange={(e) => setPaymentMethod(e.target.value)}
                           bg="gray.600"
-                        />
-                      </FormControl>
-                      <FormControl isRequired>
-                        <FormLabel>Fecha de Pago</FormLabel>
-                        <Input
-                          type="date"
-                          value={paymentDate}
-                          onChange={(e) => setPaymentDate(e.target.value)}
-                        />
-                      </FormControl>
-                    </SimpleGrid>
-
-                    <FormControl isRequired>
-                      <FormLabel>Método de Pago</FormLabel>
-                      <Select
-                        value={paymentMethod}
-                        onChange={(e) => setPaymentMethod(e.target.value)}
-                      >
-                        <option
-                          value="Efectivo"
-                          style={{ backgroundColor: "#2D3748" }}
                         >
-                          Efectivo
-                        </option>
-                        <option
-                          value="Transferencia"
-                          style={{ backgroundColor: "#2D3748" }}
-                        >
-                          Transferencia
-                        </option>
-                      </Select>
-                    </FormControl>
-
-                    {paymentMethod === "Transferencia" && (
-                      <FormControl isRequired>
-                        <FormLabel>Comprobante de Transferencia</FormLabel>
-                        <Input
-                          type="file"
-                          onChange={handleFileChange}
-                          p={1}
-                          accept=".pdf,.png,.jpg,.jpeg"
-                        />
+                          <option
+                            value="Efectivo"
+                            style={{ backgroundColor: "#2D3748" }}
+                          >
+                            Efectivo
+                          </option>
+                          <option
+                            value="Transferencia"
+                            style={{ backgroundColor: "#2D3748" }}
+                          >
+                            Transferencia
+                          </option>
+                        </Select>
                       </FormControl>
-                    )}
-
-                    <HStack w="100%" pt={4}>
-                      <Button
-                        onClick={() => navigate("/admin/payments")}
-                        flex={1}
-                      >
-                        Cancelar
-                      </Button>
-                      <Button
-                        colorScheme="teal"
-                        type="submit"
-                        flex={1}
-                        isLoading={isSaving}
-                      >
-                        Registrar Pago
-                      </Button>
-                    </HStack>
-                  </>
-                )}
-              </VStack>
-            </Box>
+                      {paymentMethod === "Transferencia" && (
+                        <FormControl isRequired>
+                          <FormLabel>Comprobante</FormLabel>
+                          <Input
+                            type="file"
+                            onChange={handleFileChange}
+                            p={1}
+                            accept=".pdf,.png,.jpg,.jpeg"
+                            sx={{ "::file-selector-button": { mr: 2 } }}
+                          />
+                        </FormControl>
+                      )}
+                      <HStack w="100%" pt={4}>
+                        <Button
+                          variant="ghost"
+                          onClick={() => navigate("/admin/payments")}
+                          flex={1}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button
+                          colorScheme="teal"
+                          type="submit"
+                          flex={1}
+                          isLoading={isSaving}
+                        >
+                          Registrar Pago
+                        </Button>
+                      </HStack>
+                    </VStack>
+                  )}
+                </VStack>
+              )}
+            </VStack>
           </CardBody>
         </Card>
       </VStack>

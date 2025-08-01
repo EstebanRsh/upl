@@ -25,6 +25,7 @@ export interface Invoice {
   id: number;
   invoice_date: string;
   due_date: string;
+  total_amount: number;
   amount: number;
   status: 'Pagado' | 'Pendiente' | 'Pendiente con Comprobante' | 'Vencido' | 'Rechazado';
   receipt_path: string | null;
@@ -118,6 +119,15 @@ export const registerManualPayment = async (formData: FormData, token:string): P
       'Content-Type': 'multipart/form-data', // Esencial para la subida de archivos
       Authorization: `Bearer ${token}`,
     },
+  });
+  return response.data;
+};
+
+export const searchUsers = async (query: string, token: string): Promise<UserDetail[]> => {
+  // El endpoint es /api/admin/users/search y el parámetro es 'q'
+  const response = await axios.get(`http://localhost:8000/api/admin/users/search`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { q: query },
   });
   return response.data;
 };

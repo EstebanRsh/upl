@@ -179,3 +179,29 @@ export const updateSubscriptionStatus = async (subscriptionId: number, status: s
   );
   return response.data;
 };
+/**
+ * Obtiene una lista paginada de todos los usuarios para el panel de admin.
+ */
+export const getPaginatedUsers = async (
+  token: string,
+  page: number,
+  searchTerm?: string
+) => {
+  const params = new URLSearchParams({
+    page: String(page),
+    size: '10', // O el tamaño que prefieras
+  });
+
+  if (searchTerm) {
+    // Asegúrate de que el parámetro de búsqueda en tu API sea 'username' o ajústalo si es otro (ej. 'search', 'q')
+    params.append('username', searchTerm);
+  }
+
+  const response = await axios.get(`${API_BASE_URL}/users/all`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: params,
+  });
+  
+  // Devuelve el objeto completo con los items y el total de páginas
+  return response.data as { items: UserDetail[], total_pages: number };
+};

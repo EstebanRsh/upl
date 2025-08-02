@@ -1,121 +1,127 @@
-# routes/subscription_routes.py
-import logging
-from fastapi import APIRouter, Depends, HTTPException, status, Header
-from sqlalchemy.orm import Session, joinedload
-from pydantic import BaseModel
+// src/views/admin/ClientManagement.tsx
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  Box,
+  Heading,
+  VStack,
+  Spinner,
+  Alert,
+  AlertIcon,
+  HStack,
+  Button,
+} from "@chakra-ui/react";
+import { useAuth } from "../../context/AuthContext";
+import { ClientList } from "../../components/admin/ClientList";
+import { ClientSearch } from "../../components/admin/ClientSearch";
+import { Pagination } from "../../components/payments/Pagination";
+import { getPaginatedUsers, UserDetail } from "../../services/adminService"; // <-- ¡CAMBIO IMPORTANTE!
 
-from models.models import Subscription, InputSubscription, User, Plan # Aseguramos que Plan esté importado
-from auth.security import Security
-from config.db import get_db
+// Exportamos el tipo para que otros componentes puedan usarlo
+export type User = UserDetail;
 
-logger = logging.getLogger(__name__)
-subscription_router = APIRouter()
+function ClientManagement() {
+  const [users, setUsers] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [searchTerm, setSearchTerm] = useState("");
+  const navigate = useNavigate();
+  const { token } = useAuth();
 
+  useEffect(() => {
+    // Si no hay token, no hacemos nada.
+    if (!token) {
+      setIsLoading(false);
+      setError("No estás autenticado.");
+      return;
+    }
 
-# Schema para recibir el nuevo estado en el body del PUT
-class SubscriptionStatusUpdate(BaseModel):
-    status: str
+    const fetchUsers = async () => {
+      setIsLoading(true);
+      setError(null);
 
+      try {
+        // --- ¡LÓGICA CORREGIDA! Usamos nuestro servicio estandarizado ---
+        const data = await getPaginatedUsers(token, currentPage, searchTerm);
+        setUsers(data.items);
+        setTotalPages(data.total_pages);
+      } catch (err: any) {
+        console.error("Error al cargar usuarios:", err);
+        const errorMessage =
+          err.response?.data?.detail || "No se pudieron cargar los usuarios.";
+        setError(errorMessage);
+        setUsers([]); // Limpiamos los usuarios en caso de error
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-def verify_admin_permission(authorization: str = Header(...)):
-    """Verifica que el token en la cabecera pertenezca a un administrador."""
-    token_data = Security.verify_token({"authorization": authorization})
-    if not token_data.get("success") or token_data.get("role") != "administrador":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos de administrador para realizar esta acción.",
-        )
-    return token_data
+    fetchUsers();
+  }, [currentPage, searchTerm, token]);
 
+  const handleSearch = (term: string) => {
+    setCurrentPage(1); // Resetea a la primera página en cada nueva búsqueda
+    setSearchTerm(term);
+  };
 
-@subscription_router.post(
-    "/admin/subscriptions/assign",
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(verify_admin_permission)],
-    tags=["Admin"],
-)
-def assign_plan_to_user(sub_data: InputSubscription, db: Session = Depends(get_db)):
-    logger.info(f"Asignando plan ID {sub_data.plan_id} a usuario ID {sub_data.user_id}.")
-    
-    # Verificamos que tanto el usuario como el plan existan
-    if not db.query(User).filter_by(id=sub_data.user_id).first():
-        raise HTTPException(status_code=404, detail=f"Usuario con ID {sub_data.user_id} no encontrado.")
-    if not db.query(Plan).filter_by(id=sub_data.plan_id).first():
-        raise HTTPException(status_code=404, detail=f"Plan con ID {sub_data.plan_id} no encontrado.")
+  const renderContent = () => {
+    if (isLoading) {
+      return (
+        <Box display="flex" justifyContent="center" py={10}>
+          <Spinner size="xl" />
+        </Box>
+      );
+    }
+    if (error) {
+      return (
+        <Alert status="error" mt={4}>
+          <AlertIcon />
+          {error}
+        </Alert>
+      );
+    }
+    // Pasamos el tipo de dato correcto a ClientList
+    return <ClientList users={users} />;
+  };
 
-    # Verificamos si ya existe una suscripción activa para evitar duplicados
-    existing_active_sub = db.query(Subscription).filter_by(
-        user_id=sub_data.user_id, status='active'
-    ).first()
-    if existing_active_sub:
-        raise HTTPException(
-            status_code=409, # Conflict
-            detail="El cliente ya tiene una suscripción activa. Cancela la anterior antes de asignar una nueva."
-        )
+  return (
+    <Box
+      p={{ base: 4, md: 8 }}
+      bg="gray.800"
+      color="white"
+      minH="calc(100vh - 4rem)"
+    >
+      <VStack spacing={6} align="stretch" maxW="1200px" mx="auto">
+        <HStack justify="space-between" wrap="wrap" gap={4}>
+          <Heading as="h1" size="xl">
+            Gestión de Clientes
+          </Heading>
+          <HStack>
+            <ClientSearch onSearch={handleSearch} />
+            <Button
+              colorScheme="teal"
+              onClick={() => navigate("/admin/clients/add")}
+            >
+              Añadir Cliente
+            </Button>
+          </HStack>
+        </HStack>
 
-    new_subscription = Subscription(user_id=sub_data.user_id, plan_id=sub_data.plan_id)
-    db.add(new_subscription)
-    db.commit()
-    return {"message": "Plan asignado al cliente exitosamente."}
+        {renderContent()}
 
+        {totalPages > 1 && !error && (
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+            isLoading={isLoading}
+          />
+        )}
+      </VStack>
+    </Box>
+  );
+}
 
-# --- NUEVA FUNCIÓN AÑADIDA ---
-@subscription_router.put(
-    "/admin/subscriptions/{subscription_id}/status",
-    status_code=status.HTTP_200_OK,
-    dependencies=[Depends(verify_admin_permission)],
-    tags=["Admin"],
-)
-def update_subscription_status(
-    subscription_id: int,
-    update_data: SubscriptionStatusUpdate,
-    db: Session = Depends(get_db)
-):
-    """
-    Actualiza el estado de una suscripción (ej: 'active', 'suspended', 'cancelled').
-    """
-    logger.info(f"Cambiando estado de la suscripción ID {subscription_id} a '{update_data.status}'.")
-    
-    subscription = db.query(Subscription).filter_by(id=subscription_id).first()
-    if not subscription:
-        raise HTTPException(status_code=404, detail="Suscripción no encontrada.")
-
-    valid_statuses = ["active", "suspended", "cancelled"]
-    if update_data.status not in valid_statuses:
-        raise HTTPException(status_code=400, detail=f"Estado '{update_data.status}' no es válido.")
-
-    subscription.status = update_data.status
-    db.commit()
-    
-    return {"message": f"El estado de la suscripción ha sido actualizado a '{update_data.status}'."}
-
-
-@subscription_router.get(
-    "/users/{user_id}/subscriptions", 
-    tags=["Suscripciones"]
-)
-def get_user_subscriptions(
-    user_id: int,
-    authorization: str = Header(...),
-    db: Session = Depends(get_db),
-):
-    token_data = Security.verify_token({"authorization": authorization})
-    if not token_data.get("success"):
-        raise HTTPException(status_code=401, detail=token_data.get("message"))
-
-    requesting_user_id = token_data.get("user_id")
-    requesting_user_role = token_data.get("role")
-
-    if requesting_user_role != "administrador" and requesting_user_id != user_id:
-        raise HTTPException(status_code=403, detail="No tienes permiso para ver estas suscripciones.")
-
-    user = (
-        db.query(User)
-        .options(joinedload(User.subscriptions).joinedload(Subscription.plan))
-        .filter_by(id=user_id)
-        .first()
-    )
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
-
-    return user.subscriptions
+export default ClientManagement;

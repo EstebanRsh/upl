@@ -1,21 +1,20 @@
 # models/models.py
-# -----------------------------------------------------------------------------
-# DEFINICIÓN DE MODELOS DE DATOS (VERSIÓN FINAL Y LIMPIA)
-# -----------------------------------------------------------------------------
-
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from config.db import Base
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, Boolean
 from sqlalchemy.orm import relationship
 import datetime
 from datetime import date
+from pydantic import (
+    BaseModel,
+    EmailStr,
+    Field,
+)  # Importaciones para los schemas de Pydantic
 from core.constants import (
     SUBSCRIPTION_STATUS_ACTIVE,
     INVOICE_STATUS_PENDING,
 )
 
 # --- Modelos de la Base de Datos (SQLAlchemy) ---
-# Estas son las clases que definen la estructura de tus tablas.
 
 
 class User(Base):
@@ -132,17 +131,26 @@ class Subscription(Base):
         self.plan_id = plan_id
 
 
-class BusinessSettings(Base):
-    __tablename__ = "business_settings"
+class CompanySettings(Base):
+    __tablename__ = "company_settings"
     id = Column(Integer, primary_key=True)
-    setting_name = Column(String, unique=True, nullable=False, index=True)
-    setting_value = Column(String, nullable=False)
-    description = Column(String, nullable=True)
 
-    def __init__(self, setting_name, setting_value, description=None):
-        self.setting_name = setting_name
-        self.setting_value = setting_value
-        self.description = description
+    # --- Configuración General (Ahora completa y corregida) ---
+    business_name = Column(String, nullable=False, default="UPL Telecomunicaciones")
+    business_cuit = Column(String, nullable=False, default="30-12345678-9")
+    business_address = Column(String, nullable=False, default="Av. Siempreviva 742")
+    business_city = Column(
+        String, nullable=False, default="Springfield"
+    )  # <-- CORREGIDO
+    business_phone = Column(String, nullable=False, default="11-5555-4444")
+
+    # --- Facturación y Pagos ---
+    payment_window_days = Column(Integer, nullable=False, default=15)
+    late_fee_amount = Column(Float, nullable=False, default=500.0)
+
+    # --- Automatización ---
+    auto_invoicing_enabled = Column(Boolean, nullable=False, default=True)
+    days_for_suspension = Column(Integer, nullable=False, default=30)
 
 
 class Invoice(Base):
@@ -170,9 +178,7 @@ class Invoice(Base):
         self.total_amount = total_amount
 
 
-# --- Modelos Pydantic Esenciales (Solo para entrada de datos) ---
-# Dejamos aquí solo los modelos que FastAPI necesita para validar los JSON
-# que recibe en las peticiones (POST, PUT, etc.).
+# --- Modelos Pydantic (Solo para entrada de datos) ---
 
 
 class InputUser(BaseModel):
@@ -247,5 +253,5 @@ class InputPaymentAdmin(BaseModel):
     invoice_id: int
     amount: float
     payment_date: date
-    payment_method: str  # "Efectivo" o "Transferencia"
-    receipt_url: str | None = None  # Para el comprobante de transferencia
+    payment_method: str
+    receipt_url: str | None = None

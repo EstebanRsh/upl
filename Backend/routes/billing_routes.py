@@ -21,23 +21,23 @@ from sqlalchemy import extract, or_
 from sqlalchemy.orm import Session, joinedload
 from datetime import date
 
-# Modelos de la DB
+# --- 1. MODELOS DE LA BASE DE DATOS (ACTUALIZADOS) ---
 from models.models import (
-    BusinessSettings,
     Subscription,
     Invoice,
     User,
     Payment,
     UserDetail,
     InputPaymentAdmin,
+    CompanySettings,  # <-- Usamos el nuevo modelo robusto y simple
 )
 
-# Schemas de Pydantic
+# --- 2. SCHEMAS DE PYDANTIC ---
 from schemas.invoice_schemas import InvoiceOut, InvoiceAdminOut, UpdateInvoiceStatus
 from schemas.payment_schemas import PaymentAdminOut
 from schemas.common_schemas import PaginatedResponse
 
-# Servicios y utilidades
+# --- 3. SERVICIOS Y UTILIDADES ---
 from auth.security import Security
 from config.db import get_db
 from services.payment_service import process_new_payment_admin, PaymentException
@@ -57,6 +57,9 @@ def verify_admin_permission(authorization: str = Header(...)):
     return token_data
 
 
+# --- LÓGICA DE LA API ---
+
+
 @billing_router.get(
     "/admin/payments/all",
     response_model=PaginatedResponse[PaymentAdminOut],
@@ -66,9 +69,7 @@ def verify_admin_permission(authorization: str = Header(...)):
 def get_all_payments_for_admin(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
-    search: Optional[str] = Query(
-        None, description="Buscar por nombre, apellido o DNI del cliente"
-    ),
+    search: Optional[str] = Query(None),
     month: Optional[int] = Query(None, ge=1, le=12),
     year: Optional[int] = Query(None, ge=2020),
     payment_method: Optional[str] = Query(None),
@@ -76,8 +77,6 @@ def get_all_payments_for_admin(
 ):
     try:
         query = db.query(Payment).order_by(Payment.payment_date.desc())
-
-        # Unimos las tablas para poder filtrar y obtener los datos necesarios
         query = query.join(User, Payment.user_id == User.id).join(
             UserDetail, User.id_userdetail == UserDetail.id
         )
@@ -100,17 +99,12 @@ def get_all_payments_for_admin(
             query = query.filter(Payment.payment_method.ilike(f"%{payment_method}%"))
 
         total_items = query.count()
-
-        # Aseguramos que los datos relacionados (user y userdetail) vengan en la consulta
         payments_from_db = (
             query.options(joinedload(Payment.user).joinedload(User.userdetail))
             .offset((page - 1) * size)
             .limit(size)
             .all()
         )
-
-        # --- CORRECCIÓN DEFINITIVA AQUÍ ---
-        # Construimos la respuesta manualmente para evitar errores de validación.
         items_list = []
         for p in payments_from_db:
             if p.user and p.user.userdetail:
@@ -162,7 +156,6 @@ def register_manual_payment(
         file_extension = os.path.splitext(receipt_file.filename)[1]
         unique_filename = f"receipt_{invoice_id}_{timestamp}{file_extension}"
         file_path = os.path.join(upload_folder, unique_filename)
-
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(receipt_file.file, buffer)
         receipt_path = file_path.replace("\\", "/")
@@ -182,25 +175,22 @@ def register_manual_payment(
 
 
 def generate_monthly_invoices_logic(db: Session):
-    # (El resto de esta función no tiene cambios)
     logger.info("Iniciando la lógica de generación de facturas mensuales.")
-    automation_setting = (
-        db.query(BusinessSettings)
-        .filter_by(setting_name="auto_invoicing_enabled")
-        .first()
-    )
-    if automation_setting and automation_setting.setting_value.lower() != "true":
+
+    settings = db.query(CompanySettings).first()
+    if not settings:
+        logger.error(
+            "CRÍTICO: No se encontró la fila de configuración en la tabla company_settings."
+        )
+        return {"error": "La configuración del negocio no ha sido inicializada."}
+
+    if not settings.auto_invoicing_enabled:
         return {
             "message": "Proceso omitido. La facturación automática está desactivada.",
             "facturas_generadas": 0,
-            "facturas_omitidas": 0,
         }
-    payment_window_setting = (
-        db.query(BusinessSettings).filter_by(setting_name="payment_window_days").first()
-    )
-    if not payment_window_setting:
-        return {"error": "La regla 'payment_window_days' no está configurada."}
-    payment_window_days = int(payment_window_setting.setting_value)
+
+    payment_window_days = settings.payment_window_days
     active_subscriptions = db.query(Subscription).filter_by(status="active").all()
     generated_count, skipped_count = 0, 0
     today = datetime.date.today()
@@ -216,6 +206,7 @@ def generate_monthly_invoices_logic(db: Session):
         ):
             skipped_count += 1
             continue
+
         new_invoice = Invoice(
             user_id=sub.user_id,
             subscription_id=sub.id,
@@ -225,16 +216,17 @@ def generate_monthly_invoices_logic(db: Session):
         )
         db.add(new_invoice)
         generated_count += 1
+
     db.commit()
+    logger.info(f"Facturas generadas: {generated_count}, omitidas: {skipped_count}.")
     return {
-        "message": "Proceso completado.",
+        "message": "Proceso de facturación mensual completado.",
         "facturas_generadas": generated_count,
         "facturas_omitidas_por_duplicado": skipped_count,
     }
 
 
 def generate_monthly_invoices_job(db: Session):
-    # (Esta función no tiene cambios)
     logger.info("Ejecutando TAREA PROGRAMADA: Generación de facturas mensuales.")
     try:
         generate_monthly_invoices_logic(db)
@@ -242,6 +234,49 @@ def generate_monthly_invoices_job(db: Session):
         logger.error(f"Error en la tarea programada de facturación: {e}", exc_info=True)
     finally:
         db.close()
+
+
+@billing_router.post(
+    "/admin/invoices/process-overdue",
+    dependencies=[Depends(verify_admin_permission)],
+    tags=["Admin"],
+)
+def process_overdue_invoices(db: Session = Depends(get_db)):
+    settings = db.query(CompanySettings).first()
+    if not settings:
+        raise HTTPException(
+            status_code=400,
+            detail="La configuración del negocio no ha sido inicializada.",
+        )
+
+    late_fee = settings.late_fee_amount
+    days_for_suspension = settings.days_for_suspension
+    today = datetime.date.today()
+
+    overdue_invoices = (
+        db.query(Invoice)
+        .filter(Invoice.status == "Pendiente", Invoice.due_date < today)
+        .all()
+    )
+    processed_count, suspended_count = 0, 0
+    for invoice in overdue_invoices:
+        if invoice.late_fee == 0.0:
+            invoice.late_fee = late_fee
+            invoice.total_amount += late_fee
+            processed_count += 1
+
+        if (
+            today - invoice.due_date.date()
+        ).days >= days_for_suspension and invoice.subscription.status == "active":
+            invoice.subscription.status = "suspended"
+            suspended_count += 1
+
+    db.commit()
+    return {
+        "message": "Proceso de vencidas completado.",
+        "facturas_con_recargo": processed_count,
+        "servicios_suspendidos": suspended_count,
+    }
 
 
 @billing_router.get(
@@ -257,7 +292,6 @@ def get_all_invoices_for_admin(
     user_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
 ):
-    # (Esta función no tiene cambios)
     try:
         query = db.query(Invoice).order_by(Invoice.issue_date.desc())
         if status:
@@ -309,7 +343,6 @@ def get_all_invoices_for_admin(
     tags=["Admin"],
 )
 def generate_monthly_invoices_manual(db: Session = Depends(get_db)):
-    # (Esta función no tiene cambios)
     result = generate_monthly_invoices_logic(db)
     if "error" in result:
         raise HTTPException(status_code=400, detail=result["error"])
@@ -322,7 +355,6 @@ def download_invoice_pdf(
     authorization: str = Header(...),
     db: Session = Depends(get_db),
 ):
-    # (Esta función no tiene cambios)
     token_data = Security.verify_token({"authorization": authorization})
     if not token_data.get("success"):
         raise HTTPException(
@@ -357,50 +389,6 @@ def download_invoice_pdf(
     )
 
 
-@billing_router.post(
-    "/admin/invoices/process-overdue",
-    dependencies=[Depends(verify_admin_permission)],
-    tags=["Admin"],
-)
-def process_overdue_invoices(db: Session = Depends(get_db)):
-    # (Esta función no tiene cambios)
-    late_fee_setting = (
-        db.query(BusinessSettings).filter_by(setting_name="late_fee_amount").first()
-    )
-    suspension_days_setting = (
-        db.query(BusinessSettings).filter_by(setting_name="days_for_suspension").first()
-    )
-    if not late_fee_setting or not suspension_days_setting:
-        raise HTTPException(
-            status_code=400, detail="Faltan reglas de negocio para procesar vencidas."
-        )
-    late_fee = float(late_fee_setting.setting_value)
-    days_for_suspension = int(suspension_days_setting.setting_value)
-    today = datetime.date.today()
-    overdue_invoices = (
-        db.query(Invoice)
-        .filter(Invoice.status == "pending", Invoice.due_date < today)
-        .all()
-    )
-    processed_count, suspended_count = 0, 0
-    for invoice in overdue_invoices:
-        if invoice.late_fee == 0.0:
-            invoice.late_fee = late_fee
-            invoice.total_amount += late_fee
-            processed_count += 1
-        if (
-            today - invoice.due_date.date()
-        ).days >= days_for_suspension and invoice.subscription.status == "active":
-            invoice.subscription.status = "suspended"
-            suspended_count += 1
-    db.commit()
-    return {
-        "message": "Proceso de vencidas completado.",
-        "facturas_con_recargo": processed_count,
-        "servicios_suspendidos": suspended_count,
-    }
-
-
 @billing_router.get(
     "/users/me/invoices", response_model=PaginatedResponse[InvoiceOut], tags=["Cliente"]
 )
@@ -412,7 +400,6 @@ def get_my_invoices(
     year: int = Query(None, ge=2020),
     db: Session = Depends(get_db),
 ):
-    # (Esta función no tiene cambios)
     token_data = Security.verify_token({"authorization": authorization})
     if not token_data.get("success"):
         raise HTTPException(
@@ -443,7 +430,6 @@ def get_my_invoices(
     tags=["Admin"],
 )
 def get_invoice_by_id_for_admin(invoice_id: int, db: Session = Depends(get_db)):
-    # (Esta función no tiene cambios)
     invoice = (
         db.query(Invoice)
         .options(joinedload(Invoice.user).joinedload(User.userdetail))
@@ -484,7 +470,6 @@ def update_invoice_status(
     update_data: UpdateInvoiceStatus,
     db: Session = Depends(get_db),
 ):
-    # (Esta función no tiene cambios)
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Factura no encontrada.")
@@ -504,7 +489,6 @@ def get_my_invoice_by_id(
     authorization: str = Header(...),
     db: Session = Depends(get_db),
 ):
-    # (Esta función no tiene cambios)
     token_data = Security.verify_token({"authorization": authorization})
     if not token_data.get("success"):
         raise HTTPException(
@@ -529,7 +513,6 @@ def upload_user_receipt(
     authorization: str = Header(...),
     db: Session = Depends(get_db),
 ):
-    # (Esta función no tiene cambios)
     token_data = Security.verify_token({"authorization": authorization})
     if not token_data.get("success"):
         raise HTTPException(status_code=401, detail=token_data.get("message"))

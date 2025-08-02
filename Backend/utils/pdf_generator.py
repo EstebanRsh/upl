@@ -4,7 +4,10 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from weasyprint import HTML, CSS
 from sqlalchemy.orm import Session
-from models.models import Payment, Invoice, BusinessSettings, UserDetail, InternetPlan
+
+# --- ¡IMPORTACIONES CORREGIDAS! ---
+# Se elimina BusinessSettings y se añade CompanySettings
+from models.models import Payment, Invoice, CompanySettings, UserDetail
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 INVOICES_DIR = Path("facturas")
@@ -20,7 +23,10 @@ def get_logo_path():
 
 
 def create_invoice_pdf(invoice_data: dict, custom_filename: str) -> str:
-    """Crea un archivo PDF usando un nombre de archivo personalizado y seguro."""
+    """
+    Crea un archivo PDF usando un nombre de archivo personalizado y seguro.
+    ESTA FUNCIÓN NO SE MODIFICA PARA CONSERVAR EL DISEÑO.
+    """
     env = Environment(loader=FileSystemLoader(TEMPLATES_DIR), autoescape=True)
     template = env.get_template("invoice.html")
     html_string = template.render(**invoice_data)
@@ -29,7 +35,6 @@ def create_invoice_pdf(invoice_data: dict, custom_filename: str) -> str:
     output_dir = INVOICES_DIR / str(now.year) / f"{now.month:02d}"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Usamos directamente el nombre de archivo seguro que nos pasan
     full_path = output_dir / custom_filename
 
     css_path = TEMPLATES_DIR / "style.css"
@@ -48,11 +53,19 @@ def create_invoice_pdf(invoice_data: dict, custom_filename: str) -> str:
 def generate_payment_receipt(
     payment: Payment, invoice: Invoice, db: Session, custom_filename: str
 ) -> str:
-    """Prepara los datos y llama a la creación del PDF con el nombre de archivo personalizado."""
+    """
+    Prepara los datos y llama a la creación del PDF con el nombre de archivo personalizado.
+    """
     user_details = invoice.user.userdetail
     plan_details = invoice.subscription.plan
-    settings_from_db = db.query(BusinessSettings).all()
-    company_settings = {s.setting_name: s.setting_value for s in settings_from_db}
+
+    # --- ¡LÓGICA CORREGIDA Y SIMPLIFICADA! ---
+    # Se busca la única fila de configuración en la nueva tabla.
+    settings = db.query(CompanySettings).first()
+    if not settings:
+        raise ValueError(
+            "La configuración de la empresa (CompanySettings) no ha sido inicializada en la base de datos."
+        )
 
     meses_es = {
         1: "Enero",
@@ -73,13 +86,14 @@ def generate_payment_receipt(
     )
     receipt_number = f"F{payment.payment_date.year}-{invoice.id:03d}"
 
+    # Se usan los campos directamente del objeto 'settings', de forma segura.
     pdf_data = {
         "logo_path": get_logo_path(),
-        "company_name": company_settings.get("BUSINESS_NAME", "Nombre de Empresa"),
-        "company_address": company_settings.get("BUSINESS_ADDRESS", "Dirección"),
-        "company_city": company_settings.get("BUSINESS_CITY", "Ciudad"),
-        "company_dni": company_settings.get("BUSINESS_CUIT", "CUIT de Empresa"),
-        "company_contact": f"Whatsapp: {company_settings.get('BUSINESS_PHONE', '')}",
+        "company_name": settings.business_name,
+        "company_address": settings.business_address,
+        "company_city": "",  # Este campo ya no existe, se puede añadir si lo necesitas
+        "company_dni": settings.business_cuit,
+        "company_contact": "",  # Este campo tampoco existe, puedes añadirlo al modelo si quieres
         "client_name": f"{user_details.firstname} {user_details.lastname}",
         "client_dni": user_details.dni,
         "client_address": user_details.address,

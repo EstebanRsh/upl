@@ -5,6 +5,22 @@ import { Filters, Payment } from '../views/admin/PaymentManagement'; // Importam
 
 const API_BASE_URL = 'http://localhost:8000/api/admin';
 
+export interface Setting {
+  setting_name: string;
+  setting_value: string;
+  description?: string | null;
+}
+export interface CompanySettings {
+  business_name: string;
+  business_cuit: string;
+  business_address: string;
+  business_city: string;
+  business_phone: string;
+  payment_window_days: number;
+  late_fee_amount: number;
+  auto_invoicing_enabled: boolean;
+  days_for_suspension: number;
+}
 // Esta es la interfaz principal para un usuario, la usaremos en toda la sección de admin
 export interface UserDetail {
   id: number;
@@ -204,4 +220,18 @@ export const getPaginatedUsers = async (
   
   // Devuelve el objeto completo con los items y el total de páginas
   return response.data as { items: UserDetail[], total_pages: number };
+};
+// 2. Reemplaza las viejas funciones con estas
+export const getSettings = async (token: string): Promise<CompanySettings> => {
+  const response = await axios.get(`${API_BASE_URL}/settings`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return response.data;
+};
+
+export const updateSettings = async (settings: CompanySettings, token: string): Promise<CompanySettings> => {
+  const response = await axios.put(`${API_BASE_URL}/settings`, settings, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return response.data;
 };

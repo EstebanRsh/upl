@@ -10,7 +10,7 @@ from models.models import (
     Subscription,
     Invoice,
     Payment,
-    BusinessSettings,
+    CompanySettings,  # <-- ¡CORREGIDO! Se usa el nuevo modelo
 )
 from auth.security import Security
 import datetime
@@ -19,19 +19,7 @@ import datetime
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- DATOS INICIALES (sin cambios) ---
-COMPANY_SETTINGS = [
-    {"setting_name": "BUSINESS_NAME", "setting_value": "UPL Telecomunicaciones"},
-    {"setting_name": "BUSINESS_CUIT", "setting_value": "30-12345678-9"},
-    {"setting_name": "BUSINESS_ADDRESS", "setting_value": "Av. Siempreviva 742"},
-    {"setting_name": "BUSINESS_CITY", "setting_value": "Springfield"},
-    {"setting_name": "BUSINESS_PHONE", "setting_value": "11-5555-4444"},
-    {"setting_name": "payment_window_days", "setting_value": "15"},
-    {"setting_name": "late_fee_amount", "setting_value": "500"},
-    {"setting_name": "days_for_suspension", "setting_value": "30"},
-    {"setting_name": "auto_invoicing_enabled", "setting_value": "true"},
-]
-
+# --- DATOS INICIALES (sin la vieja configuración) ---
 PLANS_DATA = [
     {"name": "Fibra 50MB", "speed_mbps": 50, "price": 4500.00},
     {"name": "Fibra 100MB", "speed_mbps": 100, "price": 6000.00},
@@ -107,19 +95,24 @@ CLIENTS_DATA = [
 
 
 def create_admin_user(db: Session):
-    """Función para crear el usuario administrador, ahora interactiva."""
+    """
+    Función para crear el usuario administrador, interactiva.
+    ESTA ES TU FUNCIÓN ORIGINAL, SIN CAMBIOS.
+    """
     print("\n--- Creación del Usuario Administrador ---")
     use_default = input(
         "¿Deseas usar el administrador por defecto ('Admin', pass: 'adminpass')? (s/n): "
     ).lower()
 
     if use_default == "s":
-        username = "Admin"
-        email = "admin@upl.com"
-        password = "adminpass"
-        firstname = "Admin"
-        lastname = "UPL"
-        dni = "111111"
+        username, email, password, firstname, lastname, dni = (
+            "Admin",
+            "admin@upl.com",
+            "adminpass",
+            "Admin",
+            "UPL",
+            "111111",
+        )
         logger.info("Usando datos por defecto para el administrador.")
     else:
         username = input("Nombre de usuario para el Administrador: ")
@@ -127,9 +120,11 @@ def create_admin_user(db: Session):
         password = getpass("Contraseña (mínimo 8 caracteres): ")
         if len(password) < 8:
             raise ValueError("La contraseña debe tener al menos 8 caracteres.")
-        firstname = input("Nombre: ")
-        lastname = input("Apellido: ")
-        dni = input("DNI: ")
+        firstname, lastname, dni = (
+            input("Nombre: "),
+            input("Apellido: "),
+            input("DNI: "),
+        )
 
     hashed_password = Security.get_password_hash(password)
     admin_detail = UserDetail(
@@ -137,7 +132,6 @@ def create_admin_user(db: Session):
     )
     admin_user = User(username=username, password=hashed_password, email=email)
     admin_user.userdetail = admin_detail
-
     db.add(admin_user)
     db.commit()
     logger.info(f"¡Usuario Administrador '{username}' creado exitosamente!")
@@ -151,12 +145,15 @@ def setup_database():
         Base.metadata.create_all(bind=engine)
         logger.info("Tablas recreadas exitosamente.")
 
-        for setting in COMPANY_SETTINGS:
-            db.add(BusinessSettings(**setting))
+        # --- LÓGICA CORREGIDA Y SIMPLIFICADA ---
+        logger.info("Creando la configuración inicial de la empresa...")
+        # Llama a CompanySettings() sin argumentos para usar los valores por defecto.
+        initial_settings = CompanySettings()
+        db.add(initial_settings)
         db.commit()
-        logger.info("Configuración de la empresa guardada.")
+        logger.info("Configuración de la empresa creada con valores por defecto.")
 
-        # --- CORRECCIÓN: Llamamos a la función interactiva ---
+        # --- TU LÓGICA ORIGINAL PARA CREAR ADMIN Y CLIENTES, SIN CAMBIOS ---
         create_admin_user(db)
 
         logger.info("Creando planes de internet...")
